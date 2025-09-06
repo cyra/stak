@@ -23,18 +23,20 @@ func (m Model) loadTodayEntries() tea.Cmd {
 
 func (m Model) searchEntries(query string, linksOnly bool) tea.Cmd {
 	return func() tea.Msg {
-		var entries []models.Entry
-		var err error
-
-		if linksOnly {
-			entries, err = m.storage.SearchLinks(query)
-		} else {
-			entries, err = m.storage.SearchEntries(query)
-		}
-
+		allEntries, err := m.storage.LoadAllEntries()
 		if err != nil {
 			return entriesLoadedMsg{entries: []models.Entry{}}
 		}
+
+		m.searcher.SetEntries(allEntries)
+		
+		var entries []models.Entry
+		if linksOnly {
+			entries = m.searcher.SearchLinks(query)
+		} else {
+			entries = m.searcher.RankedSearch(query)
+		}
+
 		return entriesLoadedMsg{entries: entries}
 	}
 }

@@ -1,16 +1,16 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"stak/internal/config"
 	"stak/internal/models"
 	"stak/pkg/categorizer"
+	"stak/pkg/extractor"
+	"stak/pkg/search"
 	"stak/pkg/storage"
 )
 
@@ -26,6 +26,8 @@ type Model struct {
 	config       *config.Config
 	storage      *storage.Storage
 	categorizer  *categorizer.Categorizer
+	searcher     *search.FuzzySearcher
+	extractor    *extractor.LinkExtractor
 	textInput    textinput.Model
 	entries      []models.Entry
 	currentMode  mode
@@ -42,6 +44,8 @@ func NewModel() *Model {
 	cfg := config.DefaultConfig()
 	storage := storage.New(cfg)
 	categorizer := categorizer.New()
+	searcher := search.NewFuzzySearcher()
+	extractor := extractor.NewLinkExtractor()
 
 	ti := textinput.New()
 	ti.Placeholder = "Enter your thoughts, links, todos..."
@@ -53,6 +57,8 @@ func NewModel() *Model {
 		config:      cfg,
 		storage:     storage,
 		categorizer: categorizer,
+		searcher:    searcher,
+		extractor:   extractor,
 		textInput:   ti,
 		entries:     []models.Entry{},
 		currentMode: normalMode,
@@ -196,6 +202,15 @@ func (m Model) addEntry(content string) (tea.Model, tea.Cmd) {
 	entry := models.NewEntry(content)
 	m.categorizer.CategorizeEntry(entry)
 
+	if entry.Type == models.TypeLink && entry.URL != "" {
+		go func() {
+			if title, err := m.extractor.GetURLTitle(entry.URL); err == nil {
+				entry.URLTitle = title
+				m.storage.SaveEntry(entry)
+			}
+		}()
+	}
+
 	if err := m.storage.SaveEntry(entry); err != nil {
 		return m, nil
 	}
@@ -226,4 +241,8 @@ func (m Model) toggleTodo() (tea.Model, tea.Cmd) {
 	m.storage.SaveEntry(entry)
 
 	return m, m.loadTodayEntries()
+}
+
+func (m *Model) Storage() *storage.Storage {
+	return m.storage
 }
