@@ -8,257 +8,253 @@ import (
 	"stak/internal/models"
 )
 
+// Clean, minimal styles
 var (
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#FAFAFA")).
-			Background(lipgloss.Color("#7D56F4")).
-			Padding(0, 1)
+	headerClean = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#FFFFFF")).
+		Padding(0, 1)
 
-	inputStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#7D56F4")).
-			Padding(1)
+	todoHeaderClean = headerClean.Copy().
+		Background(lipgloss.Color("#FFA500"))
 
-	entryStyle = lipgloss.NewStyle().
-			Border(lipgloss.NormalBorder(), false, false, false, true).
-			BorderForeground(lipgloss.Color("#383838")).
-			Padding(0, 1).
-			Margin(0, 0, 1, 0)
+	stakHeaderClean = headerClean.Copy().
+		Background(lipgloss.Color("#7D56F4"))
 
-	selectedEntryStyle = entryStyle.Copy().
-				BorderForeground(lipgloss.Color("#7D56F4")).
-				Background(lipgloss.Color("#2A2A2A"))
+	contentClean = lipgloss.NewStyle().
+		Padding(1, 2)
 
-	todoStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FFA500"))
+	inputClean = lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), true, false, false, false).
+		BorderForeground(lipgloss.Color("#666666")).
+		Padding(0, 2)
 
-	completedTodoStyle = lipgloss.NewStyle().
-				Strikethrough(true).
-				Foreground(lipgloss.Color("#666666"))
+	statusClean = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#666666")).
+		Align(lipgloss.Center)
 
-	linkStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#00CED1")).
-			Underline(true)
-
-	tagStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#98FB98")).
-			Italic(true)
-
-	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#888888")).
-			Border(lipgloss.RoundedBorder()).
-			Padding(1).
-			Margin(1, 0)
+	selectedEntryClean = lipgloss.NewStyle().
+		Background(lipgloss.Color("#444444")).
+		Foreground(lipgloss.Color("#FFFFFF"))
 )
 
+// Main view function - clean and stable
 func (m Model) View() string {
 	if !m.ready {
 		return "Loading..."
 	}
 
+	// Fixed dimensions - prevents all jumping
+	totalHeight := m.height
+	headerHeight := 1
+	statusHeight := 1
+	inputHeight := 3
+	
+	contentHeight := totalHeight - headerHeight - statusHeight - inputHeight
+	if contentHeight < 3 {
+		contentHeight = 3
+	}
+
 	var sections []string
 
-	sections = append(sections, m.renderHeader())
+	// 1. Header (1 line, fixed)
+	sections = append(sections, m.renderHeaderClean())
 
+	// 2. Content (fixed height)
 	if m.showHelp {
-		sections = append(sections, m.renderHelp())
+		sections = append(sections, m.renderHelpClean(contentHeight))
 	} else if m.currentMode == todoListMode && m.todoList != nil {
-		sections = append(sections, m.todoList.View())
+		sections = append(sections, m.renderTodoListClean(contentHeight))
 	} else {
-		sections = append(sections, m.renderEntries())
+		sections = append(sections, m.renderEntriesClean(contentHeight))
 	}
 
-	// Only show input if not in todoListMode
+	// 3. Input (3 lines fixed) or empty space
 	if m.currentMode != todoListMode {
-		sections = append(sections, m.renderInput())
+		sections = append(sections, m.renderInputClean())
+	} else {
+		sections = append(sections, strings.Repeat("\n", inputHeight))
 	}
-	
-	sections = append(sections, m.renderFooter())
 
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	// 4. Status bar (1 line, fixed)
+	sections = append(sections, m.renderStatusClean())
+
+	return strings.Join(sections, "")
 }
 
-func (m Model) renderHeader() string {
-	title := "stak"
+func (m Model) renderHeaderClean() string {
+	var title string
+	var style lipgloss.Style
+
 	switch m.currentMode {
 	case todoMode:
-		title += " - Todo Mode"
+		title = "TODO"
+		style = todoHeaderClean
 	case todoListMode:
-		title += " - Interactive Todo List"
+		title = "TODOS"
+		style = todoHeaderClean
 	case scratchpadMode:
-		title += " - Scratchpad Mode"
+		title = "STAK"
+		style = stakHeaderClean
 	case todayMode:
-		title += " - Today"
+		title = "TODAY"
+		style = stakHeaderClean
 	case searchMode:
-		title += fmt.Sprintf(" - Search: %s", m.searchQuery)
+		title = fmt.Sprintf("SEARCH: %s", m.searchQuery)
+		style = stakHeaderClean
+	default:
+		title = "STAK"
+		style = stakHeaderClean
 	}
 
-	return titleStyle.Render(title)
+	return style.Width(m.width).Align(lipgloss.Center).Render(title)
 }
 
-func (m Model) renderHelp() string {
-	help := strings.Join(m.commands, "\n")
-	return helpStyle.Render(help)
-}
-
-func (m Model) renderEntries() string {
+func (m Model) renderEntriesClean(height int) string {
 	if len(m.entries) == 0 {
-		var empty string
+		var emptyText string
 		switch m.currentMode {
 		case todoMode:
-			empty = "No todos for today. Type 'Fix bug' or 'Need to call client' to add your first todo!"
+			emptyText = "No todos yet. Start typing to add one."
 		case scratchpadMode:
-			empty = "No entries for today. Start typing to add your first entry!"
+			emptyText = "No entries yet. Start typing to add one."
 		case todayMode:
-			empty = "No entries for today. Start typing to add your first entry!"
+			emptyText = "No entries for today. Start typing to add one."
 		default:
-			empty = "No entries found."
+			emptyText = "No entries found."
 		}
-		return lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#666666")).
-			Italic(true).
-			Margin(2, 0).
-			Render(empty)
+
+		return contentClean.
+			Width(m.width).
+			Height(height).
+			Align(lipgloss.Center, lipgloss.Center).
+			Render(emptyText)
 	}
 
+	// Show entries IRC/chat style - oldest at top, newest at bottom
 	var renderedEntries []string
-	maxVisible := m.height - 10
-
-	start := 0
-	end := len(m.entries)
-
-	if len(m.entries) > maxVisible {
-		if m.selectedIdx >= maxVisible/2 {
-			start = m.selectedIdx - maxVisible/2
-			if start+maxVisible > len(m.entries) {
-				start = len(m.entries) - maxVisible
-			}
-		}
-		end = start + maxVisible
-		if end > len(m.entries) {
-			end = len(m.entries)
-		}
+	
+	maxVisible := height - 2 // Account for padding
+	if maxVisible < 1 {
+		maxVisible = 1
 	}
 
-	for i := start; i < end; i++ {
+	start := len(m.entries) - maxVisible
+	if start < 0 {
+		start = 0
+	}
+
+	// Render from oldest to newest (chat style)
+	for i := start; i < len(m.entries); i++ {
 		entry := m.entries[i]
-		style := entryStyle
-		if i == m.selectedIdx {
-			style = selectedEntryStyle
-		}
-
-		content := m.renderEntry(entry)
-		renderedEntries = append(renderedEntries, style.Render(content))
+		selected := (i == m.selectedIdx)
+		content := m.renderEntryClean(entry, selected)
+		renderedEntries = append(renderedEntries, content)
 	}
 
-	return strings.Join(renderedEntries, "\n")
+	entriesText := strings.Join(renderedEntries, "\n")
+	
+	return contentClean.
+		Width(m.width).
+		Height(height).
+		Render(entriesText)
 }
 
-func (m Model) renderEntry(entry models.Entry) string {
-	var parts []string
-
+func (m Model) renderEntryClean(entry models.Entry, selected bool) string {
 	timestamp := entry.CreatedAt.Format("15:04")
-	timeStr := lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).Render(timestamp)
-
-	typeIcon := m.getTypeIcon(entry.Type)
 	
-	var contentStr string
+	var content string
 	switch entry.Type {
 	case models.TypeTodo:
 		if entry.TodoStatus == models.TodoCompleted {
-			contentStr = completedTodoStyle.Render("✓ " + entry.Content)
+			content = "✓ " + entry.Content
 		} else {
-			contentStr = todoStyle.Render("□ " + entry.Content)
-		}
-	case models.TypeLink:
-		contentStr = linkStyle.Render(entry.Content)
-		if entry.URL != "" {
-			contentStr += "\n  " + lipgloss.NewStyle().Foreground(lipgloss.Color("#888888")).Render(entry.URL)
+			content = "□ " + entry.Content
 		}
 	default:
-		contentStr = entry.Content
+		content = entry.Content
 	}
 
-	parts = append(parts, fmt.Sprintf("%s %s %s", timeStr, typeIcon, contentStr))
-
-	if len(entry.Tags) > 0 {
-		tagsStr := tagStyle.Render("#" + strings.Join(entry.Tags, " #"))
-		parts = append(parts, "  "+tagsStr)
+	line := fmt.Sprintf("%s %s", timestamp, content)
+	
+	if selected {
+		return selectedEntryClean.Render(line)
 	}
-
-	return strings.Join(parts, "\n")
+	
+	return line
 }
 
-func (m Model) getTypeIcon(entryType models.EntryType) string {
-	switch entryType {
-	case models.TypeTodo:
-		return "☐"
-	case models.TypeLink:
-		return "🔗"
-	case models.TypeCode:
-		return "💻"
-	case models.TypeQuestion:
-		return "❓"
-	case models.TypeMeeting:
-		return "👥"
-	case models.TypeIdea:
-		return "💡"
-	default:
-		return "📝"
-	}
+func (m Model) renderHelpClean(height int) string {
+	help := strings.Join(m.commands, "\n")
+	return contentClean.
+		Width(m.width).
+		Height(height).
+		Render(help)
 }
 
-func (m Model) renderInput() string {
-	var placeholder string
+func (m Model) renderTodoListClean(height int) string {
+	if m.todoList == nil {
+		return contentClean.
+			Width(m.width).
+			Height(height).
+			Align(lipgloss.Center, lipgloss.Center).
+			Render("No todos available")
+	}
+
+	view := m.todoList.View()
+	return contentClean.
+		Width(m.width).
+		Height(height).
+		Render(view)
+}
+
+func (m Model) renderInputClean() string {
+	var prompt string
+	var promptStyle lipgloss.Style
+	
+	// Define prompt styles
+	todoPromptStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FFA500")).
+		Bold(true)
+		
+	stakPromptStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#7D56F4")).
+		Bold(true)
+		
+	searchPromptStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#00BFFF")).
+		Bold(true)
+	
 	switch m.currentMode {
 	case todoMode:
-		placeholder = "Add todos: 'Fix bug', 'Need to call client', etc... (Shift+Tab to switch modes)"
+		prompt = "✓ todo › "
+		promptStyle = todoPromptStyle
 	case scratchpadMode:
-		placeholder = "Enter your thoughts, links, notes... (Shift+Tab for todo mode)"
+		prompt = "⚡ stak › "
+		promptStyle = stakPromptStyle
 	case todayMode:
-		placeholder = "Add to today's entries (Tab to toggle todos)"
+		prompt = "📅 today › "
+		promptStyle = stakPromptStyle
 	case searchMode:
-		placeholder = "Press Esc to go back"
+		prompt = "🔍 search › "
+		promptStyle = searchPromptStyle
 	default:
-		placeholder = "Enter your thoughts, links, todos..."
+		prompt = "› "
+		promptStyle = stakPromptStyle
 	}
 
-	m.textInput.Placeholder = placeholder
-	return inputStyle.Render(m.textInput.View())
+	m.textInput.Prompt = promptStyle.Render(prompt)
+	
+	return inputClean.
+		Width(m.width).
+		Render(m.textInput.View())
 }
 
-func (m Model) renderFooter() string {
-	var parts []string
+// Minimal status bar
+func (m Model) renderStatusClean() string {
+	status := "Shift+Tab: toggle mode"
 	
-	if m.currentMode == todayMode && len(m.entries) > 0 {
-		todos := 0
-		completed := 0
-		for _, entry := range m.entries {
-			if entry.Type == models.TypeTodo {
-				todos++
-				if entry.TodoStatus == models.TodoCompleted {
-					completed++
-				}
-			}
-		}
-		if todos > 0 {
-			progress := fmt.Sprintf("Todos: %d/%d completed", completed, todos)
-			parts = append(parts, progress)
-		}
-	}
-	
-	help := "Shift+Tab: toggle mode • ESC: back • Ctrl+C: quit • /help: commands"
-	if m.currentMode == todoMode || m.currentMode == todayMode {
-		help = "↑↓: navigate • Tab: toggle todo • " + help
-	} else if m.currentMode == todoListMode {
-		help = "↑↓: navigate • Enter/Space/Tab: tick todo • q/ESC: back"
-	}
-	
-	parts = append(parts, help)
-	
-	footer := strings.Join(parts, " • ")
-	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#666666")).
-		Render(footer)
+	return statusClean.
+		Width(m.width).
+		Render(status)
 }

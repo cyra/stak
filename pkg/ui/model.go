@@ -37,7 +37,8 @@ type Model struct {
 	width        int
 	height       int
 	ready        bool
-	commands     []string
+	commands      []string
+	slashCommands []string
 	selectedIdx  int
 	searchQuery  string
 	showHelp     bool
@@ -59,6 +60,7 @@ func NewModelWithConfig(cfg *config.Config) *Model {
 	ti.Focus()
 	ti.CharLimit = 500
 	ti.Width = 50
+	ti.ShowSuggestions = true
 
 	return &Model{
 		config:      cfg,
@@ -79,6 +81,15 @@ func NewModelWithConfig(cfg *config.Config) *Model {
 			"/help - Show this help",
 			"/quit - Exit stak",
 		},
+		slashCommands: []string{
+			"/todos",
+			"/today",
+			"/search ",
+			"/s ",
+			"/sl ",
+			"/help",
+			"/quit",
+		},
 		selectedIdx: -1,
 	}
 }
@@ -86,7 +97,7 @@ func NewModelWithConfig(cfg *config.Config) *Model {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		textinput.Blink,
-		m.loadFilteredEntries(),
+		m.loadTodayEntries(),
 	)
 }
 
@@ -97,7 +108,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.textInput.Width = msg.Width - 4
+		// Ensure minimum width for text input
+		inputWidth := msg.Width - 4
+		if inputWidth < 20 {
+			inputWidth = 20
+		}
+		m.textInput.Width = inputWidth
+		
+		// Update todoList dimensions if it exists
+		if m.todoList != nil {
+			m.todoList.SetSize(msg.Width, msg.Height-3) // Account for header and footer
+		}
+		
 		m.ready = true
 
 	case tea.KeyMsg:
@@ -112,7 +134,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.currentMode == searchMode || m.currentMode == todayMode || m.currentMode == todoListMode {
 				m.currentMode = scratchpadMode
-				return m, m.loadFilteredEntries()
+				return m, m.loadTodayEntries()
 			}
 
 		case tea.KeyShiftTab:
@@ -150,7 +172,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case entriesLoadedMsg:
 		m.entries = msg.entries
 		if len(m.entries) > 0 && m.selectedIdx < 0 {
-			m.selectedIdx = 0
+			m.selectedIdx = len(m.entries) - 1
 		}
 
 	case filteredEntriesLoadedMsg:
@@ -158,7 +180,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.mode == m.currentMode {
 			m.entries = msg.entries
 			if len(m.entries) > 0 && m.selectedIdx < 0 {
-				m.selectedIdx = 0
+				m.selectedIdx = len(m.entries) - 1
 			}
 		}
 
@@ -176,7 +198,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case exitTodoListMsg:
 		m.currentMode = scratchpadMode
-		return m, m.loadFilteredEntries()
+		return m, m.loadTodayEntries()
 	}
 
 	// Handle todo list updates if in todo list mode
@@ -193,6 +215,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.textInput, cmd = m.textInput.Update(msg)
 	cmds = append(cmds, cmd)
 
+	// Handle autocomplete for slash commands
+	m.updateSuggestions()
+
 	return m, tea.Batch(cmds...)
 }
 
@@ -204,6 +229,10 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 
 	if strings.HasPrefix(input, "/") {
 		return m.handleCommand(input)
+	}
+
+	if strings.HasPrefix(input, "tomorrow") {
+		return m.addTomorrowEntry(input)
 	}
 
 	return m.addEntry(input)
@@ -322,3 +351,38 @@ func (m Model) toggleTodo() (tea.Model, tea.Cmd) {
 func (m *Model) Storage() *storage.Storage {
 	return m.storage
 }
+
+func (m *Model) updateSuggestions() {
+	input := m.textInput.Value()
+	
+	// Only show suggestions when input starts with "/"
+	if strings.HasPrefix(input, "/") {
+		// Filter slash commands based on current input
+		var suggestions []string
+		for _, cmd := range m.slashCommands {
+			if strings.HasPrefix(cmd, input) {
+				suggestions = append(suggestions, cmd)
+			}
+		}
+		m.textInput.SetSuggestions(suggestions)
+	} else {
+		// Clear suggestions when not typing a slash command
+		m.textInput.SetSuggestions([]string{})
+	}
+}
+
+func (m Model) addTomorrowEntry(content string) (tea.Model, tea.Cmd) {
+	entry := models.NewEntry(content)
+	m.categoriser.CategoriseEntry(entry)
+
+	if err := m.storage.SaveEntryForTomorrow(entry); err != nil {
+		return m, nil
+	}
+
+	m.textInput.SetValue("")
+	return m, func() tea.Msg {
+		return entryAddedMsg{}
+	}
+}
+
+
