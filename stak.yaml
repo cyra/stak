@@ -1,4 +1,4 @@
-data_dir: /Users/cyra/Documents/stak-notes
+data_dir: /Users/cyra/stak/notes
 log_level: info
 theme: default
 date_format: "2006-01-02"

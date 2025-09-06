@@ -18,9 +18,12 @@ type Config struct {
 }
 
 func DefaultConfig() *Config {
-	homeDir, _ := os.UserHomeDir()
+	// Get current working directory and add notes subdirectory
+	cwd, _ := os.Getwd()
+	notesDir := filepath.Join(cwd, "notes")
+	
 	return &Config{
-		DataDir:     filepath.Join(homeDir, ".stak"),
+		DataDir:     notesDir,
 		LogLevel:    "info",
 		Theme:       "default",
 		DateFormat:  "2006-01-02",
@@ -91,10 +94,11 @@ func (c *Config) EnsureDataDir() error {
 }
 
 func CreateSampleConfig(path string) error {
-	homeDir, _ := os.UserHomeDir()
+	cwd, _ := os.Getwd()
+	notesDir := filepath.Join(cwd, "notes")
 	
 	sampleConfig := &Config{
-		DataDir:     filepath.Join(homeDir, "Documents", "stak-notes"),
+		DataDir:     notesDir,
 		LogLevel:    "info", 
 		Theme:       "default",
 		DateFormat:  "2006-01-02",

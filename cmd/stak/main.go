@@ -64,7 +64,7 @@ func main() {
 			".stak.yaml",
 		}
 		
-		fmt.Printf("Data directory: %s\n", cfg.DataDir)
+		fmt.Printf("Notes directory: %s\n", cfg.DataDir)
 		fmt.Println("Config file search order:")
 		for i, path := range possiblePaths {
 			exists := ""
