@@ -103,9 +103,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case tea.KeyEsc:
+			if m.showHelp {
+				m.showHelp = false
+				return m, nil
+			}
 			if m.currentMode == searchMode || m.currentMode == todayMode {
 				m.currentMode = scratchpadMode
-				m.showHelp = false
 				return m, m.loadFilteredEntries()
 			}
 
@@ -119,6 +122,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.loadFilteredEntries()
 
 		case tea.KeyEnter:
+			if m.showHelp {
+				m.showHelp = false
+				return m, nil
+			}
 			return m.handleEnter()
 
 		case tea.KeyUp:

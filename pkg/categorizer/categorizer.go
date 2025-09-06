@@ -20,7 +20,7 @@ func New() *Categoriser {
 		todoRegex:     regexp.MustCompile(`(?i)^(\s*-\s*\[\s*\]\s*|todo:|\[\s*\]|\*\s+|•\s+|need to|should|must|have to|remember to|don't forget)`),
 		codeRegex:     regexp.MustCompile("```|`[^`]+`|\\$\\s+[a-zA-Z]|import\\s+|function\\s+|class\\s+|def\\s+|const\\s+|let\\s+|var\\s+"),
 		questionRegex: regexp.MustCompile(`\?(\s|$)`),
-		meetingRegex:  regexp.MustCompile(`(?i)(meeting|standup|sync|1:1|one-on-one|call|zoom)`),
+		meetingRegex:  regexp.MustCompile(`(?i)(meeting|standup|sync|1:1|one-on-one|zoom|conference|call.*(meeting|scheduled|today|tomorrow))`),
 	}
 }
 
@@ -36,11 +36,6 @@ func (c *Categoriser) CategoriseEntry(entry *models.Entry) {
 		}
 		c.extractTags(entry, []string{"link", "web", "reference"})
 
-	case c.isTodo(originalContent):
-		entry.Type = models.TypeTodo
-		entry.TodoStatus = models.TodoPending
-		c.extractTags(entry, []string{"todo", "task"})
-
 	case c.codeRegex.MatchString(originalContent):
 		entry.Type = models.TypeCode
 		c.extractCodeTags(entry, originalContent)
@@ -53,6 +48,11 @@ func (c *Categoriser) CategoriseEntry(entry *models.Entry) {
 	case c.meetingRegex.MatchString(content):
 		entry.Type = models.TypeMeeting
 		c.extractTags(entry, []string{"meeting", "discussion"})
+
+	case c.isTodo(originalContent):
+		entry.Type = models.TypeTodo
+		entry.TodoStatus = models.TodoPending
+		c.extractTags(entry, []string{"todo", "task"})
 
 	default:
 		entry.Type = models.TypeNote
@@ -78,6 +78,8 @@ func (c *Categoriser) isTodo(content string) bool {
 		"debug", "investigate", "research", "learn", "practice",
 		"buy", "call", "email", "schedule", "book", "contact",
 		"finish", "complete", "start", "begin", "continue",
+		"prepare", "plan", "organize", "clean", "backup", "sync",
+		"send", "reply", "respond", "follow", "track", "monitor",
 	}
 	
 	// Check if it starts with an action verb
@@ -93,6 +95,9 @@ func (c *Categoriser) isTodo(content string) bool {
 	todoIndicators := []string{
 		"need to", "should", "must", "have to", "remember to", 
 		"don't forget", "todo:", "task:", "action:", "next:",
+		"tomorrow", "later", "work on", "get done",
+		"todo", "task", "action", "handle",
+		"later today", "this week", "before", "after",
 	}
 	
 	for _, indicator := range todoIndicators {
