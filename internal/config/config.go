@@ -1,8 +1,11 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -26,6 +29,78 @@ func DefaultConfig() *Config {
 	}
 }
 
+func LoadConfig(configPath string) (*Config, error) {
+	// Start with defaults
+	config := DefaultConfig()
+	
+	// If no config path provided, try default locations
+	if configPath == "" {
+		homeDir, _ := os.UserHomeDir()
+		possiblePaths := []string{
+			filepath.Join(homeDir, ".stak", "config.yaml"),
+			filepath.Join(homeDir, ".config", "stak", "config.yaml"),
+			"stak.yaml",
+			".stak.yaml",
+		}
+		
+		for _, path := range possiblePaths {
+			if _, err := os.Stat(path); err == nil {
+				configPath = path
+				break
+			}
+		}
+	}
+	
+	// If config file exists, load it
+	if configPath != "" {
+		if data, err := os.ReadFile(configPath); err == nil {
+			if err := yaml.Unmarshal(data, config); err != nil {
+				return nil, fmt.Errorf("failed to parse config file %s: %w", configPath, err)
+			}
+		}
+	}
+	
+	// Expand relative paths to absolute
+	if !filepath.IsAbs(config.DataDir) {
+		if abs, err := filepath.Abs(config.DataDir); err == nil {
+			config.DataDir = abs
+		}
+	}
+	
+	return config, nil
+}
+
+func (c *Config) Save(configPath string) error {
+	if configPath == "" {
+		homeDir, _ := os.UserHomeDir()
+		configDir := filepath.Join(homeDir, ".stak")
+		os.MkdirAll(configDir, 0755)
+		configPath = filepath.Join(configDir, "config.yaml")
+	}
+	
+	data, err := yaml.Marshal(c)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+	
+	return os.WriteFile(configPath, data, 0644)
+}
+
 func (c *Config) EnsureDataDir() error {
 	return os.MkdirAll(c.DataDir, 0755)
+}
+
+func CreateSampleConfig(path string) error {
+	homeDir, _ := os.UserHomeDir()
+	
+	sampleConfig := &Config{
+		DataDir:     filepath.Join(homeDir, "Documents", "stak-notes"),
+		LogLevel:    "info", 
+		Theme:       "default",
+		DateFormat:  "2006-01-02",
+		AutoSave:    true,
+		FuzzySearch: true,
+	}
+	
+	return sampleConfig.Save(path)
 }

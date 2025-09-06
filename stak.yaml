@@ -1,0 +1,6 @@
+data_dir: /Users/cyra/Documents/stak-notes
+log_level: info
+theme: default
+date_format: "2006-01-02"
+auto_save: true
+fuzzy_search: true

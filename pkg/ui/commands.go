@@ -9,6 +9,11 @@ type entriesLoadedMsg struct {
 	entries []models.Entry
 }
 
+type filteredEntriesLoadedMsg struct {
+	entries []models.Entry
+	mode    mode
+}
+
 type entryAddedMsg struct{}
 
 func (m Model) loadTodayEntries() tea.Cmd {
@@ -42,16 +47,17 @@ func (m Model) searchEntries(query string, linksOnly bool) tea.Cmd {
 }
 
 func (m Model) loadFilteredEntries() tea.Cmd {
+	currentMode := m.currentMode // Capture current mode
 	return func() tea.Msg {
 		entries, err := m.storage.LoadTodayEntries()
 		if err != nil {
-			return entriesLoadedMsg{entries: []models.Entry{}}
+			return filteredEntriesLoadedMsg{entries: []models.Entry{}, mode: currentMode}
 		}
 
 		// Filter entries based on current mode
 		var filteredEntries []models.Entry
 		for _, entry := range entries {
-			switch m.currentMode {
+			switch currentMode {
 			case todoMode:
 				if entry.Type == models.TypeTodo {
 					filteredEntries = append(filteredEntries, entry)
@@ -64,6 +70,6 @@ func (m Model) loadFilteredEntries() tea.Cmd {
 			}
 		}
 
-		return entriesLoadedMsg{entries: filteredEntries}
+		return filteredEntriesLoadedMsg{entries: filteredEntries, mode: currentMode}
 	}
 }

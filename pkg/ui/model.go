@@ -43,6 +43,10 @@ type Model struct {
 
 func NewModel() *Model {
 	cfg := config.DefaultConfig()
+	return NewModelWithConfig(cfg)
+}
+
+func NewModelWithConfig(cfg *config.Config) *Model {
 	storage := storage.New(cfg)
 	categoriser := categorizer.New()
 	searcher := search.NewFuzzySearcher()
@@ -137,6 +141,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.entries = msg.entries
 		if len(m.entries) > 0 && m.selectedIdx < 0 {
 			m.selectedIdx = 0
+		}
+
+	case filteredEntriesLoadedMsg:
+		// Only update if the mode matches current mode (avoid race conditions)
+		if msg.mode == m.currentMode {
+			m.entries = msg.entries
+			if len(m.entries) > 0 && m.selectedIdx < 0 {
+				m.selectedIdx = 0
+			}
 		}
 
 	case entryAddedMsg:
@@ -249,7 +262,9 @@ func (m Model) toggleTodo() (tea.Model, tea.Cmd) {
 	}
 
 	entry.UpdatedAt = time.Now()
-	m.storage.SaveEntry(entry)
+	if err := m.storage.SaveEntry(entry); err != nil {
+		return m, nil
+	}
 
 	return m, m.loadFilteredEntries()
 }
