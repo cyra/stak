@@ -265,7 +265,16 @@ func (m Model) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 
 func (m Model) addEntry(content string) (tea.Model, tea.Cmd) {
 	entry := models.NewEntry(content)
-	m.categoriser.CategoriseEntry(entry)
+	
+	// If we're in todo mode, force everything to be a todo
+	if m.currentMode == todoMode {
+		entry.Type = models.TypeTodo
+		entry.TodoStatus = models.TodoPending
+		entry.Tags = []string{"todo", "task"}
+	} else {
+		// Use normal categorization for other modes
+		m.categoriser.CategoriseEntry(entry)
+	}
 
 	if entry.Type == models.TypeLink && entry.URL != "" {
 		go func() {
