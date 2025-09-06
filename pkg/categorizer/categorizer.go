@@ -17,7 +17,7 @@ type Categoriser struct {
 func New() *Categoriser {
 	return &Categoriser{
 		linkRegex:     regexp.MustCompile(`https?://[^\s]+`),
-		todoRegex:     regexp.MustCompile(`(?i)^(\s*-\s*\[\s*\]\s*|todo:|\[\s*\]|\*\s+|•\s+)`),
+		todoRegex:     regexp.MustCompile(`(?i)^(\s*-\s*\[\s*\]\s*|todo:|\[\s*\]|\*\s+|•\s+|need to|should|must|have to|remember to|don't forget)`),
 		codeRegex:     regexp.MustCompile("```|`[^`]+`|\\$\\s+[a-zA-Z]|import\\s+|function\\s+|class\\s+|def\\s+|const\\s+|let\\s+|var\\s+"),
 		questionRegex: regexp.MustCompile(`\?(\s|$)`),
 		meetingRegex:  regexp.MustCompile(`(?i)(meeting|standup|sync|1:1|one-on-one|call|zoom)`),
@@ -36,7 +36,7 @@ func (c *Categoriser) CategoriseEntry(entry *models.Entry) {
 		}
 		c.extractTags(entry, []string{"link", "web", "reference"})
 
-	case c.todoRegex.MatchString(originalContent):
+	case c.isTodo(originalContent):
 		entry.Type = models.TypeTodo
 		entry.TodoStatus = models.TodoPending
 		c.extractTags(entry, []string{"todo", "task"})
@@ -60,6 +60,48 @@ func (c *Categoriser) CategoriseEntry(entry *models.Entry) {
 	}
 
 	c.extractDomainTags(entry, content)
+}
+
+func (c *Categoriser) isTodo(content string) bool {
+	// First check explicit todo patterns
+	if c.todoRegex.MatchString(content) {
+		return true
+	}
+	
+	lowerContent := strings.ToLower(content)
+	
+	// Check for action verbs that indicate todos
+	actionVerbs := []string{
+		"fix", "update", "implement", "create", "build", "add", "remove", 
+		"refactor", "test", "deploy", "setup", "install", "configure",
+		"write", "read", "check", "review", "merge", "commit", "push",
+		"debug", "investigate", "research", "learn", "practice",
+		"buy", "call", "email", "schedule", "book", "contact",
+		"finish", "complete", "start", "begin", "continue",
+	}
+	
+	// Check if it starts with an action verb
+	for _, verb := range actionVerbs {
+		if strings.HasPrefix(lowerContent, verb+" ") || 
+		   strings.HasPrefix(lowerContent, verb+":") ||
+		   lowerContent == verb {
+			return true
+		}
+	}
+	
+	// Check for todo indicators
+	todoIndicators := []string{
+		"need to", "should", "must", "have to", "remember to", 
+		"don't forget", "todo:", "task:", "action:", "next:",
+	}
+	
+	for _, indicator := range todoIndicators {
+		if strings.Contains(lowerContent, indicator) {
+			return true
+		}
+	}
+	
+	return false
 }
 
 func (c *Categoriser) extractCodeTags(entry *models.Entry, content string) {

@@ -30,6 +30,27 @@ func TestCategoriseEntry(t *testing.T) {
 			expectedStatus: models.TodoPending,
 		},
 		{
+			name:           "Action verb should be categorised as todo",
+			content:        "Fix authentication bug in user service",
+			expectedType:   models.TypeTodo,
+			expectedTags:   []string{"todo", "task"},
+			expectedStatus: models.TodoPending,
+		},
+		{
+			name:           "Need to phrase should be categorised as todo",
+			content:        "Need to update the documentation",
+			expectedType:   models.TypeTodo,
+			expectedTags:   []string{"todo", "task"},
+			expectedStatus: models.TodoPending,
+		},
+		{
+			name:           "Should phrase should be categorised as todo",
+			content:        "Should refactor this code",
+			expectedType:   models.TypeTodo,
+			expectedTags:   []string{"todo", "task"},
+			expectedStatus: models.TodoPending,
+		},
+		{
 			name:         "Code snippet should be categorised as code",
 			content:      "```go\nfunc main() {\n  fmt.Println(\"Hello\")\n}\n```",
 			expectedType: models.TypeCode,

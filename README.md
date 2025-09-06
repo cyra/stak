@@ -83,6 +83,46 @@ How do I implement middleware in Go?
 ```
 → *Automatically tagged as question*
 
+### Todo Detection
+
+stak intelligently detects todos in multiple ways:
+
+**Explicit Todo Formats:**
+```
+- [ ] Complete project documentation
+TODO: Review pull request  
+* Update dependencies
+```
+
+**Action Verbs:** (automatically detected as todos)
+```
+Fix authentication bug
+Update user interface  
+Create new database migration
+Build deployment pipeline
+```
+
+**Natural Language:**
+```
+Need to call client tomorrow
+Should refactor this code
+Must complete by Friday
+Remember to backup database
+```
+
+### Managing Todos
+
+Once your todos are detected, you can manage them:
+
+1. **View Today's Todos:** Use `/today` to see all entries for today
+2. **Navigate:** Use ↑/↓ arrow keys to move through entries  
+3. **Toggle Completion:** Press **Tab** on any todo to mark it complete/incomplete
+4. **Search Todos:** Use `/s todo` to find all todos across all days
+
+**Todo States:**
+- `☐ Pending task` - Not yet completed  
+- `✓ Completed task` - Marked as done
+
 ### Using Commands
 
 ```
