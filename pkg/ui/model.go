@@ -25,7 +25,7 @@ const (
 type Model struct {
 	config       *config.Config
 	storage      *storage.Storage
-	categorizer  *categorizer.Categorizer
+	categoriser  *categorizer.Categoriser
 	searcher     *search.FuzzySearcher
 	extractor    *extractor.LinkExtractor
 	textInput    textinput.Model
@@ -43,7 +43,7 @@ type Model struct {
 func NewModel() *Model {
 	cfg := config.DefaultConfig()
 	storage := storage.New(cfg)
-	categorizer := categorizer.New()
+	categoriser := categorizer.New()
 	searcher := search.NewFuzzySearcher()
 	extractor := extractor.NewLinkExtractor()
 
@@ -56,7 +56,7 @@ func NewModel() *Model {
 	return &Model{
 		config:      cfg,
 		storage:     storage,
-		categorizer: categorizer,
+		categoriser: categoriser,
 		searcher:    searcher,
 		extractor:   extractor,
 		textInput:   ti,
@@ -200,7 +200,7 @@ func (m Model) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 
 func (m Model) addEntry(content string) (tea.Model, tea.Cmd) {
 	entry := models.NewEntry(content)
-	m.categorizer.CategorizeEntry(entry)
+	m.categoriser.CategoriseEntry(entry)
 
 	if entry.Type == models.TypeLink && entry.URL != "" {
 		go func() {

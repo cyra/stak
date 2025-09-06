@@ -6,7 +6,7 @@ import (
 	"stak/internal/models"
 )
 
-type Categorizer struct {
+type Categoriser struct {
 	linkRegex     *regexp.Regexp
 	todoRegex     *regexp.Regexp
 	codeRegex     *regexp.Regexp
@@ -14,8 +14,8 @@ type Categorizer struct {
 	meetingRegex  *regexp.Regexp
 }
 
-func New() *Categorizer {
-	return &Categorizer{
+func New() *Categoriser {
+	return &Categoriser{
 		linkRegex:     regexp.MustCompile(`https?://[^\s]+`),
 		todoRegex:     regexp.MustCompile(`(?i)^(\s*-\s*\[\s*\]\s*|todo:|\[\s*\]|\*\s+|•\s+)`),
 		codeRegex:     regexp.MustCompile("```|`[^`]+`|\\$\\s+[a-zA-Z]|import\\s+|function\\s+|class\\s+|def\\s+|const\\s+|let\\s+|var\\s+"),
@@ -24,7 +24,7 @@ func New() *Categorizer {
 	}
 }
 
-func (c *Categorizer) CategorizeEntry(entry *models.Entry) {
+func (c *Categoriser) CategoriseEntry(entry *models.Entry) {
 	content := strings.ToLower(entry.Content)
 	originalContent := entry.Content
 
@@ -48,6 +48,7 @@ func (c *Categorizer) CategorizeEntry(entry *models.Entry) {
 	case c.questionRegex.MatchString(originalContent):
 		entry.Type = models.TypeQuestion
 		c.extractTags(entry, []string{"question", "inquiry"})
+		c.extractLanguageTags(entry, originalContent)
 
 	case c.meetingRegex.MatchString(content):
 		entry.Type = models.TypeMeeting
@@ -61,11 +62,12 @@ func (c *Categorizer) CategorizeEntry(entry *models.Entry) {
 	c.extractDomainTags(entry, content)
 }
 
-func (c *Categorizer) extractCodeTags(entry *models.Entry, content string) {
+func (c *Categoriser) extractCodeTags(entry *models.Entry, content string) {
 	tags := []string{"code"}
 	
 	languages := map[string]string{
 		"go":         "golang",
+		"golang":     "golang",
 		"javascript": "js",
 		"typescript": "ts",
 		"python":     "python",
@@ -88,7 +90,7 @@ func (c *Categorizer) extractCodeTags(entry *models.Entry, content string) {
 	c.extractTags(entry, tags)
 }
 
-func (c *Categorizer) extractGeneralTags(entry *models.Entry, content string) {
+func (c *Categoriser) extractGeneralTags(entry *models.Entry, content string) {
 	keywords := map[string]string{
 		"idea":    "idea",
 		"brainstorm": "brainstorm",
@@ -109,6 +111,9 @@ func (c *Categorizer) extractGeneralTags(entry *models.Entry, content string) {
 		}
 	}
 	
+	// Also check for programming languages in all content
+	c.extractLanguageTags(entry, content)
+	
 	if len(tags) == 0 {
 		tags = []string{"note"}
 	}
@@ -116,7 +121,31 @@ func (c *Categorizer) extractGeneralTags(entry *models.Entry, content string) {
 	c.extractTags(entry, tags)
 }
 
-func (c *Categorizer) extractDomainTags(entry *models.Entry, content string) {
+func (c *Categoriser) extractLanguageTags(entry *models.Entry, content string) {
+	languages := map[string]string{
+		"go":         "golang",
+		"golang":     "golang",
+		"javascript": "js",
+		"typescript": "ts",
+		"python":     "python",
+		"rust":       "rust",
+		"java":       "java",
+		"docker":     "docker",
+		"sql":        "database",
+		"bash":       "shell",
+		"yaml":       "config",
+		"json":       "config",
+	}
+
+	contentLower := strings.ToLower(content)
+	for keyword, tag := range languages {
+		if strings.Contains(contentLower, keyword) {
+			c.extractTags(entry, []string{tag})
+		}
+	}
+}
+
+func (c *Categoriser) extractDomainTags(entry *models.Entry, content string) {
 	domains := map[string]string{
 		"work":     "work",
 		"personal": "personal",
@@ -134,7 +163,7 @@ func (c *Categorizer) extractDomainTags(entry *models.Entry, content string) {
 	}
 }
 
-func (c *Categorizer) extractTags(entry *models.Entry, tags []string) {
+func (c *Categoriser) extractTags(entry *models.Entry, tags []string) {
 	for _, tag := range tags {
 		if !contains(entry.Tags, tag) {
 			entry.Tags = append(entry.Tags, tag)
