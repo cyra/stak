@@ -1,0 +1,75 @@
+package ui
+
+import (
+	tea "github.com/charmbracelet/bubbletea"
+	"stak/internal/models"
+)
+
+type entriesLoadedMsg struct {
+	entries []models.Entry
+}
+
+type filteredEntriesLoadedMsg struct {
+	entries []models.Entry
+	mode    mode
+}
+
+type entryAddedMsg struct{}
+
+func (m Model) loadTodayEntries() tea.Cmd {
+	return func() tea.Msg {
+		entries, err := m.storage.LoadTodayEntries()
+		if err != nil {
+			return entriesLoadedMsg{entries: []models.Entry{}}
+		}
+		return entriesLoadedMsg{entries: entries}
+	}
+}
+
+func (m Model) searchEntries(query string, linksOnly bool) tea.Cmd {
+	return func() tea.Msg {
+		allEntries, err := m.storage.LoadAllEntries()
+		if err != nil {
+			return entriesLoadedMsg{entries: []models.Entry{}}
+		}
+
+		m.searcher.SetEntries(allEntries)
+		
+		var entries []models.Entry
+		if linksOnly {
+			entries = m.searcher.SearchLinks(query)
+		} else {
+			entries = m.searcher.RankedSearch(query)
+		}
+
+		return entriesLoadedMsg{entries: entries}
+	}
+}
+
+func (m Model) loadFilteredEntries() tea.Cmd {
+	currentMode := m.currentMode // Capture current mode
+	return func() tea.Msg {
+		entries, err := m.storage.LoadTodayEntries()
+		if err != nil {
+			return filteredEntriesLoadedMsg{entries: []models.Entry{}, mode: currentMode}
+		}
+
+		// Filter entries based on current mode
+		var filteredEntries []models.Entry
+		for _, entry := range entries {
+			switch currentMode {
+			case todoMode:
+				if entry.Type == models.TypeTodo {
+					filteredEntries = append(filteredEntries, entry)
+				}
+			case scratchpadMode:
+				// Show everything in scratchpad mode
+				filteredEntries = append(filteredEntries, entry)
+			default:
+				filteredEntries = append(filteredEntries, entry)
+			}
+		}
+
+		return filteredEntriesLoadedMsg{entries: filteredEntries, mode: currentMode}
+	}
+}
