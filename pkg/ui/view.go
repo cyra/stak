@@ -76,6 +76,10 @@ func (m Model) View() string {
 func (m Model) renderHeader() string {
 	title := "stak"
 	switch m.currentMode {
+	case todoMode:
+		title += " - Todo Mode"
+	case scratchpadMode:
+		title += " - Scratchpad Mode"
 	case todayMode:
 		title += " - Today"
 	case searchMode:
@@ -92,9 +96,16 @@ func (m Model) renderHelp() string {
 
 func (m Model) renderEntries() string {
 	if len(m.entries) == 0 {
-		empty := "No entries found."
-		if m.currentMode == normalMode || m.currentMode == todayMode {
+		var empty string
+		switch m.currentMode {
+		case todoMode:
+			empty = "No todos for today. Type 'Fix bug' or 'Need to call client' to add your first todo!"
+		case scratchpadMode:
 			empty = "No entries for today. Start typing to add your first entry!"
+		case todayMode:
+			empty = "No entries for today. Start typing to add your first entry!"
+		default:
+			empty = "No entries found."
 		}
 		return lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#666666")).
@@ -191,11 +202,18 @@ func (m Model) getTypeIcon(entryType models.EntryType) string {
 }
 
 func (m Model) renderInput() string {
-	placeholder := "Enter your thoughts, links, todos..."
-	if m.currentMode == todayMode {
+	var placeholder string
+	switch m.currentMode {
+	case todoMode:
+		placeholder = "Add todos: 'Fix bug', 'Need to call client', etc... (Shift+Tab to switch modes)"
+	case scratchpadMode:
+		placeholder = "Enter your thoughts, links, notes... (Shift+Tab for todo mode)"
+	case todayMode:
 		placeholder = "Add to today's entries (Tab to toggle todos)"
-	} else if m.currentMode == searchMode {
+	case searchMode:
 		placeholder = "Press Esc to go back"
+	default:
+		placeholder = "Enter your thoughts, links, todos..."
 	}
 
 	m.textInput.Placeholder = placeholder
@@ -222,8 +240,8 @@ func (m Model) renderFooter() string {
 		}
 	}
 	
-	help := "ESC: back • Ctrl+C: quit • /help: commands"
-	if m.currentMode == todayMode {
+	help := "Shift+Tab: toggle mode • ESC: back • Ctrl+C: quit • /help: commands"
+	if m.currentMode == todoMode || m.currentMode == todayMode {
 		help = "↑↓: navigate • Tab: toggle todo • " + help
 	}
 	

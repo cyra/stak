@@ -4,6 +4,11 @@ A smart terminal scratchpad built with Go and Charm Bracelet's TUI libraries. st
 
 ## ✨ Features
 
+### Dual Mode Interface
+- **Scratchpad Mode** - View all entries: notes, links, todos, code snippets
+- **Todo Mode** - Focused view showing only your todos
+- **Easy switching** with Shift+Tab between modes
+
 ### Smart Categorisation
 - **Automatic detection** of content types: todos, links, code, questions, meetings, notes
 - **Multi-layered tagging** system with domain and context awareness  
@@ -17,7 +22,7 @@ A smart terminal scratchpad built with Go and Charm Bracelet's TUI libraries. st
 
 ### Beautiful Interface
 - **Clean TUI** built with Bubbletea and Lipgloss
-- **Syntax highlighting** for different content types
+- **Mode indicators** showing current view (Scratchpad/Todo)
 - **Smooth navigation** with keyboard shortcuts
 - **Real-time visual feedback** for todos and links
 
@@ -57,8 +62,9 @@ Start stak:
 ## ⌨️ Keyboard Shortcuts
 
 - **Enter** - Add entry or execute command
+- **Shift+Tab** - Toggle between scratchpad and todo modes
 - **↑/↓** - Navigate entries  
-- **Tab** - Toggle todo completion (in today view)
+- **Tab** - Toggle todo completion (in todo mode)
 - **Esc** - Go back / exit modes
 - **Ctrl+C** - Quit
 
@@ -110,14 +116,34 @@ Must complete by Friday
 Remember to backup database
 ```
 
+### Dual Modes
+
+stak has two focused modes for different workflows:
+
+**🗒️ Scratchpad Mode** (Default)
+- Shows **all entries**: todos, notes, links, code snippets
+- Perfect for general note-taking and dumping thoughts
+- See everything you've added today in one place
+
+**✅ Todo Mode** (Shift+Tab to switch)
+- Shows **only todos** for focused task management
+- Clean view of what needs to be done
+- Easy completion tracking with Tab key
+
+**Switching Modes:**
+- Press **Shift+Tab** to toggle between modes instantly
+- Mode indicator in the header shows current view
+- Each mode has context-appropriate placeholders and help
+
 ### Managing Todos
 
 Once your todos are detected, you can manage them:
 
-1. **View Today's Todos:** Use `/today` to see all entries for today
-2. **Navigate:** Use ↑/↓ arrow keys to move through entries  
+1. **Switch to Todo Mode:** Press **Shift+Tab** for focused todo view
+2. **Navigate:** Use ↑/↓ arrow keys to move through todos
 3. **Toggle Completion:** Press **Tab** on any todo to mark it complete/incomplete
-4. **Search Todos:** Use `/s todo` to find all todos across all days
+4. **View All Entries:** Press **Shift+Tab** again to return to scratchpad mode
+5. **Search Todos:** Use `/s todo` to find all todos across all days
 
 **Todo States:**
 - `☐ Pending task` - Not yet completed  

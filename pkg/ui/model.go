@@ -17,7 +17,8 @@ import (
 type mode int
 
 const (
-	normalMode mode = iota
+	scratchpadMode mode = iota
+	todoMode
 	searchMode
 	todayMode
 )
@@ -61,8 +62,9 @@ func NewModel() *Model {
 		extractor:   extractor,
 		textInput:   ti,
 		entries:     []models.Entry{},
-		currentMode: normalMode,
+		currentMode: scratchpadMode,
 		commands: []string{
+			"Shift+Tab - Toggle between scratchpad and todo mode",
 			"/today - Show today's entries",
 			"/search <query> - Search all entries", 
 			"/s <query> - Search all entries",
@@ -77,7 +79,7 @@ func NewModel() *Model {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		textinput.Blink,
-		m.loadTodayEntries(),
+		m.loadFilteredEntries(),
 	)
 }
 
@@ -97,11 +99,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case tea.KeyEsc:
-			if m.currentMode != normalMode {
-				m.currentMode = normalMode
+			if m.currentMode == searchMode || m.currentMode == todayMode {
+				m.currentMode = scratchpadMode
 				m.showHelp = false
-				return m, m.loadTodayEntries()
+				return m, m.loadFilteredEntries()
 			}
+
+		case tea.KeyShiftTab:
+			if m.currentMode == scratchpadMode {
+				m.currentMode = todoMode
+			} else if m.currentMode == todoMode {
+				m.currentMode = scratchpadMode
+			}
+			m.selectedIdx = -1
+			return m, m.loadFilteredEntries()
 
 		case tea.KeyEnter:
 			return m.handleEnter()
@@ -117,7 +128,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyTab:
-			if m.currentMode == todayMode && m.selectedIdx >= 0 && m.selectedIdx < len(m.entries) {
+			if (m.currentMode == todoMode || m.currentMode == todayMode) && m.selectedIdx >= 0 && m.selectedIdx < len(m.entries) {
 				return m.toggleTodo()
 			}
 		}
@@ -129,7 +140,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case entryAddedMsg:
-		cmds = append(cmds, m.loadTodayEntries())
+		cmds = append(cmds, m.loadFilteredEntries())
 	}
 
 	var cmd tea.Cmd
@@ -173,7 +184,7 @@ func (m Model) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 	case "/today", "/t":
 		m.currentMode = todayMode
 		m.textInput.SetValue("")
-		return m, m.loadTodayEntries()
+		return m, m.loadFilteredEntries()
 
 	case "/search", "/s":
 		if len(args) > 0 {
@@ -240,7 +251,7 @@ func (m Model) toggleTodo() (tea.Model, tea.Cmd) {
 	entry.UpdatedAt = time.Now()
 	m.storage.SaveEntry(entry)
 
-	return m, m.loadTodayEntries()
+	return m, m.loadFilteredEntries()
 }
 
 func (m *Model) Storage() *storage.Storage {

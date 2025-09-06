@@ -40,3 +40,30 @@ func (m Model) searchEntries(query string, linksOnly bool) tea.Cmd {
 		return entriesLoadedMsg{entries: entries}
 	}
 }
+
+func (m Model) loadFilteredEntries() tea.Cmd {
+	return func() tea.Msg {
+		entries, err := m.storage.LoadTodayEntries()
+		if err != nil {
+			return entriesLoadedMsg{entries: []models.Entry{}}
+		}
+
+		// Filter entries based on current mode
+		var filteredEntries []models.Entry
+		for _, entry := range entries {
+			switch m.currentMode {
+			case todoMode:
+				if entry.Type == models.TypeTodo {
+					filteredEntries = append(filteredEntries, entry)
+				}
+			case scratchpadMode:
+				// Show everything in scratchpad mode
+				filteredEntries = append(filteredEntries, entry)
+			default:
+				filteredEntries = append(filteredEntries, entry)
+			}
+		}
+
+		return entriesLoadedMsg{entries: filteredEntries}
+	}
+}
