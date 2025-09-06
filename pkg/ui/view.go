@@ -63,11 +63,17 @@ func (m Model) View() string {
 
 	if m.showHelp {
 		sections = append(sections, m.renderHelp())
+	} else if m.currentMode == todoListMode && m.todoList != nil {
+		sections = append(sections, m.todoList.View())
 	} else {
 		sections = append(sections, m.renderEntries())
 	}
 
-	sections = append(sections, m.renderInput())
+	// Only show input if not in todoListMode
+	if m.currentMode != todoListMode {
+		sections = append(sections, m.renderInput())
+	}
+	
 	sections = append(sections, m.renderFooter())
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
@@ -78,6 +84,8 @@ func (m Model) renderHeader() string {
 	switch m.currentMode {
 	case todoMode:
 		title += " - Todo Mode"
+	case todoListMode:
+		title += " - Interactive Todo List"
 	case scratchpadMode:
 		title += " - Scratchpad Mode"
 	case todayMode:
@@ -243,6 +251,8 @@ func (m Model) renderFooter() string {
 	help := "Shift+Tab: toggle mode • ESC: back • Ctrl+C: quit • /help: commands"
 	if m.currentMode == todoMode || m.currentMode == todayMode {
 		help = "↑↓: navigate • Tab: toggle todo • " + help
+	} else if m.currentMode == todoListMode {
+		help = "↑↓: navigate • Enter/Space/Tab: tick todo • q/ESC: back"
 	}
 	
 	parts = append(parts, help)

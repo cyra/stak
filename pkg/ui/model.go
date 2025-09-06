@@ -19,6 +19,7 @@ type mode int
 const (
 	scratchpadMode mode = iota
 	todoMode
+	todoListMode
 	searchMode
 	todayMode
 )
@@ -30,6 +31,7 @@ type Model struct {
 	searcher     *search.FuzzySearcher
 	extractor    *extractor.LinkExtractor
 	textInput    textinput.Model
+	todoList     *TodoListModel
 	entries      []models.Entry
 	currentMode  mode
 	width        int
@@ -69,6 +71,7 @@ func NewModelWithConfig(cfg *config.Config) *Model {
 		currentMode: scratchpadMode,
 		commands: []string{
 			"Shift+Tab - Toggle between scratchpad and todo mode",
+			"/todos - Interactive todo list with checkboxes",
 			"/today - Show today's entries",
 			"/search <query> - Search all entries", 
 			"/s <query> - Search all entries",
@@ -107,7 +110,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.showHelp = false
 				return m, nil
 			}
-			if m.currentMode == searchMode || m.currentMode == todayMode {
+			if m.currentMode == searchMode || m.currentMode == todayMode || m.currentMode == todoListMode {
 				m.currentMode = scratchpadMode
 				return m, m.loadFilteredEntries()
 			}
@@ -161,6 +164,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case entryAddedMsg:
 		cmds = append(cmds, m.loadFilteredEntries())
+
+	case todoToggledMsg:
+		// Save the toggled todo entry
+		if err := m.storage.SaveEntry(msg.entry); err == nil {
+			// Refresh the current view if we're not in todo list mode
+			if m.currentMode != todoListMode {
+				cmds = append(cmds, m.loadFilteredEntries())
+			}
+		}
+
+	case exitTodoListMsg:
+		m.currentMode = scratchpadMode
+		return m, m.loadFilteredEntries()
+	}
+
+	// Handle todo list updates if in todo list mode
+	if m.currentMode == todoListMode && m.todoList != nil {
+		var todoCmd tea.Cmd
+		todoModel, todoCmd := m.todoList.Update(msg)
+		if todoList, ok := todoModel.(*TodoListModel); ok {
+			m.todoList = todoList
+		}
+		cmds = append(cmds, todoCmd)
 	}
 
 	var cmd tea.Cmd
@@ -205,6 +231,14 @@ func (m Model) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 		m.currentMode = todayMode
 		m.textInput.SetValue("")
 		return m, m.loadFilteredEntries()
+
+	case "/todos":
+		m.currentMode = todoListMode
+		m.textInput.SetValue("")
+		// Load today's entries and create todo list
+		entries, _ := m.storage.LoadTodayEntries()
+		m.todoList = NewTodoListModel(entries)
+		return m, nil
 
 	case "/search", "/s":
 		if len(args) > 0 {
