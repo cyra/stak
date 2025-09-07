@@ -5,44 +5,45 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"stak/internal/models"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // IRC-style status bar styles
 var (
 	statusBarStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#2D2D2D")).
-		Foreground(lipgloss.Color("#FFFFFF")).
-		Padding(0, 1)
+			Background(lipgloss.Color("#2D2D2D")).
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Padding(0, 1)
 
 	modeSegmentStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#5F87AF")).
-		Foreground(lipgloss.Color("#FFFFFF")).
-		Bold(true).
-		Padding(0, 1)
+				Background(lipgloss.Color("#5F87AF")).
+				Foreground(lipgloss.Color("#FFFFFF")).
+				Bold(true).
+				Padding(0, 1)
 
 	contextSegmentStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#875F87")).
-		Foreground(lipgloss.Color("#FFFFFF")).
-		Padding(0, 1)
+				Background(lipgloss.Color("#875F87")).
+				Foreground(lipgloss.Color("#FFFFFF")).
+				Padding(0, 1)
 
 	timeSegmentStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#5F875F")).
-		Foreground(lipgloss.Color("#FFFFFF")).
-		Padding(0, 1)
+				Background(lipgloss.Color("#5F875F")).
+				Foreground(lipgloss.Color("#FFFFFF")).
+				Padding(0, 1)
 
 	contentClean = lipgloss.NewStyle().
-		Padding(1, 2)
+			Padding(1, 2)
 
 	contextBarStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#3D3D3D")).
-		Foreground(lipgloss.Color("#AAAAAA")).
-		Padding(0, 1)
+			Background(lipgloss.Color("#3D3D3D")).
+			Foreground(lipgloss.Color("#AAAAAA")).
+			Padding(0, 1)
 
 	selectedEntryClean = lipgloss.NewStyle().
-		Background(lipgloss.Color("#444444")).
-		Foreground(lipgloss.Color("#FFFFFF"))
+				Background(lipgloss.Color("#444444")).
+				Foreground(lipgloss.Color("#FFFFFF"))
 )
 
 // Main view function - clean and stable
@@ -56,7 +57,7 @@ func (m Model) View() string {
 	contextBarHeight := 1
 	statusBarHeight := 1
 	inputHeight := 3
-	
+
 	contentHeight := totalHeight - contextBarHeight - statusBarHeight - inputHeight
 	if contentHeight < 3 {
 		contentHeight = 3
@@ -64,13 +65,17 @@ func (m Model) View() string {
 
 	var sections []string
 
-	// 1. Content (fixed height)
+	// 1. Content (fixed height) - apply consistent borders
 	if m.showHelp {
-		sections = append(sections, m.renderHelpClean(contentHeight))
+		content := m.renderHelpClean(contentHeight)
+		sections = append(sections, m.addConsistentBorder(content, m.width, contentHeight, false))
 	} else if m.currentMode == calendarMode {
 		sections = append(sections, m.renderCalendarView(contentHeight))
 	} else {
-		sections = append(sections, m.renderEntriesClean(contentHeight))
+		// For STAK and TODO modes, apply border to the main content area
+		content := m.renderEntriesClean(contentHeight)
+		isFocused := m.currentMode == todoMode && !m.textInput.Focused() // Focused when navigating todos
+		sections = append(sections, m.addConsistentBorder(content, m.width, contentHeight, isFocused))
 	}
 
 	// 2. IRC-style status bar (directly above input)
@@ -103,7 +108,7 @@ func (m Model) renderIRCStatusBar() string {
 	// Context segment (or error message)
 	var contextText string
 	var contextSegment string
-	
+
 	// Check if we have an error to show (and it's less than 5 seconds old)
 	if m.errorMessage != "" && time.Since(m.errorTime) < 5*time.Second {
 		// Show error in red
@@ -118,7 +123,7 @@ func (m Model) renderIRCStatusBar() string {
 			// Note: In a real implementation, we'd clear this in the model,
 			// but for now just don't show it
 		}
-		
+
 		// Show normal context
 		switch m.currentMode {
 		case todoMode:
@@ -134,7 +139,16 @@ func (m Model) renderIRCStatusBar() string {
 				contextText = fmt.Sprintf("%d/%d done", completed, len(m.entries))
 			}
 		case calendarMode:
-			contextText = fmt.Sprintf("%s • %d entries", m.selectedDate.Format("January 2006"), len(m.entries))
+			var paneText string
+			switch m.activePane {
+			case inputPane:
+				paneText = "INPUT"
+			case entriesPane:
+				paneText = "NOTES"
+			case datePickerPane:
+				paneText = "CALENDAR"
+			}
+			contextText = fmt.Sprintf("%s • %s • %d entries", m.selectedDate.Format("January 2006"), paneText, len(m.entries))
 		default:
 			contextText = fmt.Sprintf("%d entries", len(m.entries))
 		}
@@ -170,28 +184,15 @@ func (m Model) renderEntriesClean(height int) string {
 			emptyText = "No entries found."
 		}
 
-		return contentClean.
-			Width(m.width).
-			Height(height).
-			Align(lipgloss.Center, lipgloss.Center).
-			Render(emptyText)
+		// Don't apply sizing here - let the border function handle it
+		return emptyText
 	}
 
 	// Show entries IRC/chat style - oldest at top, newest at bottom
 	var renderedEntries []string
-	
-	maxVisible := height - 2 // Account for padding
-	if maxVisible < 1 {
-		maxVisible = 1
-	}
 
-	start := len(m.entries) - maxVisible
-	if start < 0 {
-		start = 0
-	}
-
-	// Render from oldest to newest (chat style)
-	for i := start; i < len(m.entries); i++ {
+	// Render all entries - let the border function handle height constraints
+	for i := 0; i < len(m.entries); i++ {
 		entry := m.entries[i]
 		selected := (i == m.selectedIdx)
 		content := m.renderEntryClean(entry, selected)
@@ -199,16 +200,14 @@ func (m Model) renderEntriesClean(height int) string {
 	}
 
 	entriesText := strings.Join(renderedEntries, "\n")
-	
-	return contentClean.
-		Width(m.width).
-		Height(height).
-		Render(entriesText)
+
+	// Don't apply sizing here - let the border function handle it
+	return entriesText
 }
 
 func (m Model) renderEntryClean(entry models.Entry, selected bool) string {
 	timestamp := entry.CreatedAt.Format("15:04")
-	
+
 	var content string
 	switch entry.Type {
 	case models.TypeTodo:
@@ -222,7 +221,7 @@ func (m Model) renderEntryClean(entry models.Entry, selected bool) string {
 	}
 
 	line := fmt.Sprintf("%s %s", timestamp, content)
-	
+
 	if selected {
 		if m.currentMode == todoMode && !m.textInput.Focused() {
 			// Add visual indicator for navigation mode
@@ -230,16 +229,14 @@ func (m Model) renderEntryClean(entry models.Entry, selected bool) string {
 		}
 		return selectedEntryClean.Render(line)
 	}
-	
+
 	return line
 }
 
 func (m Model) renderHelpClean(height int) string {
 	help := strings.Join(m.commands, "\n")
-	return contentClean.
-		Width(m.width).
-		Height(height).
-		Render(help)
+	// Don't apply sizing here - let the border function handle it
+	return help
 }
 
 func (m Model) renderTodoListClean(height int) string {
@@ -261,13 +258,15 @@ func (m Model) renderTodoListClean(height int) string {
 func (m Model) renderInputClean() string {
 	// Make sure we have a visible input with proper styling
 	inputView := m.textInput.View()
-	
+
 	// Highlight border if active pane in calendar mode
 	borderColor := "#666666"
 	if m.currentMode == calendarMode && m.activePane == inputPane {
 		borderColor = "#FFA500"
+	} else if m.textInput.Focused() {
+		borderColor = "#00FF00" // Green for focused input
 	}
-	
+
 	// Claude Code style rounded border
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -285,9 +284,9 @@ func (m Model) renderHelpBar() string {
 // Calendar view with tab-navigable panes
 func (m Model) renderCalendarView(height int) string {
 	// Check minimum terminal size for calendar mode
-	minWidth := 80
+	minWidth := 100
 	minHeight := 20
-	
+
 	if m.width < minWidth || height < minHeight {
 		errorText := fmt.Sprintf("Terminal too small. Calendar mode needs at least %dx%d characters.", minWidth, minHeight)
 		return contentClean.
@@ -296,57 +295,152 @@ func (m Model) renderCalendarView(height int) string {
 			Align(lipgloss.Center, lipgloss.Center).
 			Render(errorText)
 	}
-	
-	// Split the width - 40% left content, 60% right for calendar and notes
-	leftWidth := int(float64(m.width) * 0.4)
-	rightWidth := m.width - leftWidth - 2 // -2 for spacing and potential borders
-	
-	if leftWidth < 20 {
-		leftWidth = 20
-		rightWidth = m.width - 22 // Adjust right width accordingly
+
+	// Fixed width for calendar pane - make it a bit wider for better appearance
+	// Account for two separate borders: each takes 4 characters (2 border + 2 padding)
+	availableWidth := m.width - 8 // 4 for left border + 4 for right border
+	calendarFixedWidth := 40      // Fixed width for calendar pane
+	leftWidth := availableWidth - calendarFixedWidth
+
+	// Ensure minimum width for notes pane
+	if leftWidth < 40 {
+		leftWidth = 40
+		calendarFixedWidth = availableWidth - leftWidth
 	}
-	if rightWidth < 30 {
-		rightWidth = 30
-		leftWidth = m.width - 32 // Adjust left width accordingly
-	}
-	
-	// Ensure widths don't exceed available space
-	if leftWidth + rightWidth + 2 > m.width {
-		leftWidth = int(float64(m.width-2) * 0.4)
-		rightWidth = m.width - leftWidth - 2
-	}
-	
+
 	// Left side: entries for selected date (with focus indication)
 	leftContent := m.renderSelectedDateEntries(leftWidth, height)
-	if m.activePane == entriesPane {
-		leftContent = m.addFocusBorder(leftContent, leftWidth, height)
-	}
-	
+	leftContent = m.addConsistentBorder(leftContent, leftWidth, height, m.activePane == entriesPane)
+
 	// Right side: just the calendar, taking up the full height
-	calendarContent := m.renderDatePicker(rightWidth, height)
-	if m.activePane == datePickerPane {
-		calendarContent = m.addFocusBorder(calendarContent, rightWidth, height)
+	calendarContent := m.renderDatePicker(calendarFixedWidth, height)
+	calendarContent = m.addConsistentBorder(calendarContent, calendarFixedWidth, height, m.activePane == datePickerPane)
+
+	// Manually combine left and right content to eliminate gaps
+	// Split both contents into lines and combine them line by line
+	leftLines := strings.Split(leftContent, "\n")
+	rightLines := strings.Split(calendarContent, "\n")
+
+	// Ensure both have the same number of lines
+	maxLines := len(leftLines)
+	if len(rightLines) > maxLines {
+		maxLines = len(rightLines)
 	}
-	
-	// No vertical join needed - just use the calendar content
-	rightContent := calendarContent
-	
-	// Combine left and right horizontally
-	leftBox := contentClean.Width(leftWidth).Height(height).Render(leftContent)
-	// Don't apply additional height constraint to rightBox since rightContent already has proper sizing
-	rightBox := lipgloss.NewStyle().Width(rightWidth).Render(rightContent)
-	
-	return lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
+
+	var combinedLines []string
+	for i := 0; i < maxLines; i++ {
+		leftLine := ""
+		rightLine := ""
+
+		if i < len(leftLines) {
+			leftLine = leftLines[i]
+		}
+		if i < len(rightLines) {
+			rightLine = rightLines[i]
+		}
+
+		// Combine lines directly without any spacing
+		combinedLines = append(combinedLines, leftLine+rightLine)
+	}
+
+	return strings.Join(combinedLines, "\n")
 }
 
-func (m Model) addFocusBorder(content string, width, height int) string {
-	focusStyle := lipgloss.NewStyle().
+func (m Model) addConsistentBorder(content string, width, height int, isFocused bool) string {
+	// Always apply border to maintain consistent dimensions
+	borderColor := "#444444" // Darker gray border for better visibility
+	if isFocused {
+		borderColor = "#FFA500" // Orange border when focused
+	}
+
+	// Ensure content fills the full height by padding it to the required height
+	contentLines := strings.Split(content, "\n")
+	requiredLines := height - 4 // Account for border (2) + padding (2)
+
+	// If content has fewer lines than required, pad with empty lines
+	for len(contentLines) < requiredLines {
+		contentLines = append(contentLines, "")
+	}
+
+	// If content has more lines than required, truncate
+	if len(contentLines) > requiredLines {
+		contentLines = contentLines[:requiredLines]
+	}
+
+	paddedContent := strings.Join(contentLines, "\n")
+
+	// Apply border with proper dimensions - account for border and padding
+	// RoundedBorder adds 2 characters for border, Padding(1,1) adds 2 more
+	// So total is 4 characters, so we need width-4 and height-4
+	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#FFA500")).
-		Width(width).
-		Height(height).
-		Align(lipgloss.Center, lipgloss.Center)
-	return focusStyle.Render(content)
+		BorderForeground(lipgloss.Color(borderColor)).
+		Width(width-4).   // Account for border (2) + padding (2)
+		Height(height-4). // Account for border (2) + padding (2)
+		Padding(1, 1).
+		Render(paddedContent)
+}
+
+// Split pane border function for seamless calendar layout
+func (m Model) addSplitPaneBorder(content string, width, height int, isFocused bool, isLeft bool) string {
+	// Always apply border to maintain consistent dimensions
+	borderColor := "#444444" // Darker gray border for better visibility
+	if isFocused {
+		borderColor = "#FFA500" // Orange border when focused
+	}
+
+	// Ensure content fills the full height by padding it to the required height
+	contentLines := strings.Split(content, "\n")
+	requiredLines := height - 4 // Account for border (2) + padding (2)
+
+	// If content has fewer lines than required, pad with empty lines
+	for len(contentLines) < requiredLines {
+		contentLines = append(contentLines, "")
+	}
+
+	// If content has more lines than required, truncate
+	if len(contentLines) > requiredLines {
+		contentLines = contentLines[:requiredLines]
+	}
+
+	paddedContent := strings.Join(contentLines, "\n")
+
+	// Create separate borders for each pane - no connections
+	var border lipgloss.Border
+	if isLeft {
+		// Left pane: complete separate border
+		border = lipgloss.Border{
+			Top:         "─",
+			Bottom:      "─",
+			Left:        "│",
+			Right:       "│",
+			TopLeft:     "╭",
+			TopRight:    "╮", // Separate corner, not connected
+			BottomLeft:  "╰",
+			BottomRight: "╯", // Separate corner, not connected
+		}
+	} else {
+		// Right pane: complete separate border
+		border = lipgloss.Border{
+			Top:         "─",
+			Bottom:      "─",
+			Left:        "│",
+			Right:       "│",
+			TopLeft:     "╭", // Separate corner, not connected
+			TopRight:    "╮",
+			BottomLeft:  "╰", // Separate corner, not connected
+			BottomRight: "╯",
+		}
+	}
+
+	// Apply border with proper dimensions
+	return lipgloss.NewStyle().
+		Border(border).
+		BorderForeground(lipgloss.Color(borderColor)).
+		Width(width-4).   // Account for border (2) + padding (2)
+		Height(height-4). // Account for border (2) + padding (2)
+		Padding(1, 1).
+		Render(paddedContent)
 }
 
 // Render calendar grid for current month
@@ -354,85 +448,105 @@ func (m Model) renderCalendarGrid(width, height int) string {
 	now := m.selectedDate
 	year := now.Year()
 	month := now.Month()
-	
-	// Calendar header
+
+	// Calendar header with better spacing for wider pane
 	monthName := month.String() + " " + fmt.Sprintf("%d", year)
 	header := lipgloss.NewStyle().Bold(true).Align(lipgloss.Center).Render(monthName)
-	
-	// Days of week header
-	daysHeader := "Su Mo Tu We Th Fr Sa"
-	
+
+	// Days of week header with better spacing
+	daysHeader := " Su Mo Tu We Th Fr Sa "
+
 	// Get first day of month and number of days
 	firstDay := time.Date(year, month, 1, 0, 0, 0, 0, now.Location())
 	lastDay := firstDay.AddDate(0, 1, -1)
 	daysInMonth := lastDay.Day()
 	startWeekday := int(firstDay.Weekday())
-	
+
 	// Build calendar grid
 	var lines []string
 	lines = append(lines, header)
 	lines = append(lines, daysHeader)
-	
+
 	// Calendar days
 	var currentLine []string
-	
+
 	// Add empty spaces for days before month starts
 	for i := 0; i < startWeekday; i++ {
-		currentLine = append(currentLine, "  ")
+		currentLine = append(currentLine, "   ") // Match the spacing of days
 	}
-	
-	// Add days of the month
+
+	// Add days of the month with better spacing
 	for day := 1; day <= daysInMonth; day++ {
-		dayStr := fmt.Sprintf("%2d", day)
-		
+		dayStr := fmt.Sprintf(" %2d", day) // Add space before day for better alignment
+
 		// Check if this day has entries
 		dayDate := time.Date(year, month, day, 0, 0, 0, 0, now.Location())
 		dateKey := dayDate.Format("2006-01-02")
+		hasEntries := false
 		if entries, exists := m.calendarEntries[dateKey]; exists && len(entries) > 0 {
-			dayStr = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFA500")).Bold(true).Render(dayStr)
+			hasEntries = true
 		}
-		
-		// Highlight selected day
+
+		// Apply styling based on selection and entries
 		if day == now.Day() {
-			dayStr = lipgloss.NewStyle().Background(lipgloss.Color("#444444")).Render(dayStr)
+			// Selected day - use orange background with black text
+			dayStr = lipgloss.NewStyle().
+				Background(lipgloss.Color("#FFA500")).
+				Foreground(lipgloss.Color("#000000")).
+				Bold(true).
+				Render(dayStr)
+		} else if hasEntries {
+			// Days with entries - use orange text
+			dayStr = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#FFA500")).
+				Bold(true).
+				Render(dayStr)
 		}
-		
+
 		currentLine = append(currentLine, dayStr)
-		
+
 		// Start new line after Saturday
 		if len(currentLine) == 7 {
 			lines = append(lines, strings.Join(currentLine, " "))
 			currentLine = []string{}
 		}
 	}
-	
+
 	// Add remaining days if needed
 	if len(currentLine) > 0 {
 		lines = append(lines, strings.Join(currentLine, " "))
 	}
-	
+
+	// Ensure we always have 6 weeks (42 days) for consistent height
+	// Add empty lines if needed to maintain consistent calendar height
+	for len(lines) < 8 { // 1 header + 1 days header + 6 weeks
+		lines = append(lines, "                    ") // Empty line with consistent width
+	}
+
 	return strings.Join(lines, "\n")
 }
 
 // Render entries for the currently selected date
 func (m Model) renderSelectedDateEntries(width, height int) string {
 	selectedDateStr := m.selectedDate.Format("Monday, January 2, 2006")
-	
+
 	header := lipgloss.NewStyle().Bold(true).Render(selectedDateStr)
-	
+
 	if len(m.entries) == 0 {
 		emptyText := "No entries for this date"
 		content := header + "\n\n" + lipgloss.NewStyle().Faint(true).Render(emptyText)
-		return m.wrapEntriesContent(content, width, height)
+		return content
 	}
-	
+
 	var entryLines []string
 	entryLines = append(entryLines, header, "")
-	
-	for i, entry := range m.entries {
+
+	// Render all entries - let the border function handle height constraints
+	for i := 0; i < len(m.entries); i++ {
+		entry := m.entries[i]
 		timestamp := entry.CreatedAt.Format("15:04")
 		var content string
-		
+
 		switch entry.Type {
 		case models.TypeTodo:
 			if entry.TodoStatus == models.TodoCompleted {
@@ -443,59 +557,38 @@ func (m Model) renderSelectedDateEntries(width, height int) string {
 		default:
 			content = entry.Content
 		}
-		
+
 		line := fmt.Sprintf("%s %s", timestamp, content)
-		
+
 		// Highlight selected entry (if any)
 		if i == m.selectedIdx {
 			line = selectedEntryClean.Render(line)
 		}
-		
+
 		entryLines = append(entryLines, line)
 	}
-	
+
 	content := strings.Join(entryLines, "\n")
-	return m.wrapEntriesContent(content, width, height)
+	// Don't apply sizing here - let the border function handle it
+	return content
 }
 
-// Helper function to wrap entries content with proper sizing
+// Helper function to wrap entries content with consistent sizing
 func (m Model) wrapEntriesContent(content string, width, height int) string {
-	// Adjust sizing based on whether focus border will be applied
-	actualWidth := width - 2  // Account for potential border
-	actualHeight := height - 2
-	if m.activePane == entriesPane {
-		actualWidth = width - 4 // Extra space for focus border
-		actualHeight = height - 4
-	}
-	
-	return lipgloss.NewStyle().
-		Width(actualWidth).
-		Height(actualHeight).
-		Padding(1, 1).
-		Render(content)
+	// Don't apply sizing here - let the border function handle it
+	// Just return the content as-is since addConsistentBorder will handle sizing
+	return content
 }
 
 // Render the datepicker component
 func (m Model) renderDatePicker(width, height int) string {
 	header := lipgloss.NewStyle().Bold(true).Render("Calendar")
-	
-	// Get the datepicker view
-	pickerView := m.datePicker.View()
-	
-	content := header + "\n\n" + pickerView
-	
-	// Adjust sizing based on whether focus border will be applied
-	actualWidth := width - 2  // Account for potential border
-	actualHeight := height - 2
-	if m.activePane == datePickerPane {
-		actualWidth = width - 4 // Extra space for focus border
-		actualHeight = height - 4
-	}
-	
-	return lipgloss.NewStyle().
-		Width(actualWidth).
-		Height(actualHeight).
-		Padding(1, 1).
-		Render(content)
-}
 
+	// Use our custom calendar grid with highlighting
+	calendarGrid := m.renderCalendarGrid(width, height-2) // -2 for header spacing
+
+	content := header + "\n\n" + calendarGrid
+
+	// Don't apply sizing here - let the border function handle it
+	return content
+}

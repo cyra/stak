@@ -31,7 +31,7 @@ func NewEntryService(
 
 func (s *EntryService) CreateEntry(content string, forceType *models.EntryType) (*models.Entry, error) {
 	entry := models.NewEntry(content)
-	
+
 	if forceType != nil {
 		entry.Type = *forceType
 		if *forceType == models.TypeTodo {
@@ -41,7 +41,7 @@ func (s *EntryService) CreateEntry(content string, forceType *models.EntryType) 
 	} else {
 		s.categorizer.CategoriseEntry(entry)
 	}
-	
+
 	// Handle link extraction asynchronously if needed
 	if entry.Type == models.TypeLink && entry.URL != "" {
 		go func() {
@@ -51,7 +51,7 @@ func (s *EntryService) CreateEntry(content string, forceType *models.EntryType) 
 			}
 		}()
 	}
-	
+
 	return entry, s.storage.SaveEntry(entry)
 }
 
@@ -59,6 +59,36 @@ func (s *EntryService) CreateTomorrowEntry(content string) error {
 	entry := models.NewEntry(content)
 	s.categorizer.CategoriseEntry(entry)
 	return s.storage.SaveEntryForTomorrow(entry)
+}
+
+func (s *EntryService) CreateEntryForDate(content string, date time.Time, forceType *models.EntryType) (*models.Entry, error) {
+	entry := models.NewEntry(content)
+
+	// Override the created date with the specified date
+	entry.CreatedAt = date
+	entry.UpdatedAt = date
+
+	if forceType != nil {
+		entry.Type = *forceType
+		if *forceType == models.TypeTodo {
+			entry.TodoStatus = models.TodoPending
+			entry.Tags = []string{"todo", "task"}
+		}
+	} else {
+		s.categorizer.CategoriseEntry(entry)
+	}
+
+	// Handle link extraction asynchronously if needed
+	if entry.Type == models.TypeLink && entry.URL != "" {
+		go func() {
+			if title, err := s.extractor.GetURLTitle(entry.URL); err == nil {
+				entry.URLTitle = title
+				s.storage.SaveEntry(entry) // Save updated entry with title
+			}
+		}()
+	}
+
+	return entry, s.storage.SaveEntry(entry)
 }
 
 func (s *EntryService) ToggleTodoStatus(entryID string, entries []models.Entry) (*models.Entry, error) {
@@ -70,7 +100,7 @@ func (s *EntryService) ToggleTodoStatus(entryID string, entries []models.Entry) 
 				entries[i].TodoStatus = models.TodoPending
 			}
 			entries[i].UpdatedAt = time.Now()
-			
+
 			err := s.storage.SaveEntry(&entries[i])
 			return &entries[i], err
 		}
@@ -86,11 +116,15 @@ func (s *EntryService) LoadFilteredEntries(entryType models.EntryType) ([]models
 	return s.storage.LoadFilteredEntries(entryType)
 }
 
+func (s *EntryService) LoadAllEntries() ([]models.Entry, error) {
+	return s.storage.LoadAllEntries()
+}
+
 func (s *EntryService) SearchEntries(query string, linksOnly bool) ([]models.Entry, error) {
 	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
 	if normalizedQuery == "" {
 		return []models.Entry{}, nil
 	}
-	
+
 	return s.storage.SearchEntries(normalizedQuery, linksOnly)
 }
