@@ -107,7 +107,6 @@ type Model struct {
 	commands      []string
 	slashCommands []string
 	selectedIdx   int
-	searchQuery   string
 	showHelp      bool
 	// Calendar mode fields
 	selectedDate    time.Time
@@ -542,7 +541,8 @@ func (m Model) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 				_, err = m.entryService.CreateEntry(todoText, &todoType)
 			}
 			if err != nil {
-				// TODO: Show error in status bar
+				m.errorMessage = "Failed to create todo: " + err.Error()
+				m.errorTime = time.Now()
 			}
 			m.textInput.SetValue("")
 			if m.currentMode == calendarMode {
@@ -653,50 +653,6 @@ func (m Model) addTomorrowEntry(content string) (tea.Model, tea.Cmd) {
 	return m, func() tea.Msg {
 		return entryAddedMsg{}
 	}
-}
-
-// Load todos from the past week
-func (m Model) loadWeekTodos() ([]models.Entry, error) {
-	now := time.Now()
-	weekAgo := now.AddDate(0, 0, -7)
-
-	// For now, load today's entries and filter by date
-	// TODO: Extend storage service to support date range queries
-	allEntries, err := m.storage.LoadTodayEntries()
-	if err != nil {
-		return []models.Entry{}, err
-	}
-
-	var weekEntries []models.Entry
-	for _, entry := range allEntries {
-		if entry.Type == models.TypeTodo && entry.CreatedAt.After(weekAgo) {
-			weekEntries = append(weekEntries, entry)
-		}
-	}
-
-	return weekEntries, nil
-}
-
-// Load todos from the past month
-func (m Model) loadMonthTodos() ([]models.Entry, error) {
-	now := time.Now()
-	monthAgo := now.AddDate(0, -1, 0)
-
-	// For now, load today's entries and filter by date
-	// TODO: Extend storage service to support date range queries
-	allEntries, err := m.storage.LoadTodayEntries()
-	if err != nil {
-		return []models.Entry{}, err
-	}
-
-	var monthEntries []models.Entry
-	for _, entry := range allEntries {
-		if entry.Type == models.TypeTodo && entry.CreatedAt.After(monthAgo) {
-			monthEntries = append(monthEntries, entry)
-		}
-	}
-
-	return monthEntries, nil
 }
 
 // Start editing a selected todo

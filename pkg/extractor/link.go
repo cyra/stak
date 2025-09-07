@@ -7,15 +7,16 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/net/html"
 	"stak/internal/ports"
+
+	"golang.org/x/net/html"
 )
 
 // Compile-time check to ensure LinkExtractor implements ExtractorPort
 var _ ports.ExtractorPort = (*LinkExtractor)(nil)
 
 type LinkExtractor struct {
-	client *http.Client
+	client   *http.Client
 	urlRegex *regexp.Regexp
 }
 
@@ -82,9 +83,7 @@ func extractDomain(url string) string {
 	matches := domainRegex.FindStringSubmatch(url)
 	if len(matches) > 1 {
 		domain := matches[1]
-		if strings.HasPrefix(domain, "www.") {
-			domain = domain[4:]
-		}
+		domain = strings.TrimPrefix(domain, "www.")
 		return domain
 	}
 	return "Link"

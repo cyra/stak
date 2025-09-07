@@ -47,7 +47,11 @@ func (s *EntryService) CreateEntry(content string, forceType *models.EntryType) 
 		go func() {
 			if title, err := s.extractor.GetURLTitle(entry.URL); err == nil {
 				entry.URLTitle = title
-				s.storage.SaveEntry(entry) // Save updated entry with title
+				if err := s.storage.SaveEntry(entry); err != nil {
+					// Log error but don't fail the main operation
+					// TODO: Add proper logging
+					_ = err // Acknowledge the error to avoid unused variable warning
+				}
 			}
 		}()
 	}
@@ -83,7 +87,11 @@ func (s *EntryService) CreateEntryForDate(content string, date time.Time, forceT
 		go func() {
 			if title, err := s.extractor.GetURLTitle(entry.URL); err == nil {
 				entry.URLTitle = title
-				s.storage.SaveEntry(entry) // Save updated entry with title
+				if err := s.storage.SaveEntry(entry); err != nil {
+					// Log error but don't fail the main operation
+					// TODO: Add proper logging
+					_ = err // Acknowledge the error to avoid unused variable warning
+				}
 			}
 		}()
 	}

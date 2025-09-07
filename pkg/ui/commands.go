@@ -33,17 +33,6 @@ func (m Model) loadTodayEntries() tea.Cmd {
 	}
 }
 
-func (m Model) searchEntries(query string, linksOnly bool) tea.Cmd {
-	return func() tea.Msg {
-		entries, err := m.entryService.SearchEntries(query, linksOnly)
-		if err != nil {
-			return entriesLoadedMsg{entries: []models.Entry{}}
-		}
-
-		return entriesLoadedMsg{entries: entries}
-	}
-}
-
 func (m Model) loadFilteredEntries() tea.Cmd {
 	currentMode := m.currentMode // Capture current mode
 	return func() tea.Msg {
