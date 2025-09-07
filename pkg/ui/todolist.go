@@ -62,7 +62,7 @@ func (d todoItemDelegate) Render(w io.Writer, m list.Model, index int, listItem 
 	
 	fn := todoItemStyle.Render
 	if index == m.Index() {
-		fn = func(s ...string) string {
+		fn = func(...string) string {
 			return selectedTodoItemStyle.Render("> " + str)
 		}
 	}
@@ -97,7 +97,7 @@ func NewTodoListModel(entries []models.Entry) *TodoListModel {
 	l.Title = "Today's Todos"
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
-	l.Styles.Title = titleStyle
+	l.Styles.Title = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFA500"))
 	l.Styles.PaginationStyle = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
 	l.Styles.HelpStyle = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
 
@@ -169,6 +169,10 @@ func (m TodoListModel) View() string {
 	}
 	
 	return "\n" + m.list.View()
+}
+
+func (m *TodoListModel) SetSize(width, height int) {
+	m.list.SetSize(width, height)
 }
 
 type todoToggledMsg struct {
