@@ -10,28 +10,28 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// IRC-style status bar styles
+// Status bar styles following Lip Gloss example
 var (
-	statusBarStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("#2D2D2D")).
-			Foreground(lipgloss.Color("#FFFFFF")).
+	statusNugget = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFFDF5")).
 			Padding(0, 1)
 
-	modeSegmentStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color("#5F87AF")).
-				Foreground(lipgloss.Color("#FFFFFF")).
-				Bold(true).
-				Padding(0, 1)
+	statusBarStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "#343433", Dark: "#C1C6B2"}).
+			Background(lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#353533"})
 
-	contextSegmentStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color("#875F87")).
-				Foreground(lipgloss.Color("#FFFFFF")).
-				Padding(0, 1)
+	statusStyle = lipgloss.NewStyle().
+			Inherit(statusBarStyle).
+			Foreground(lipgloss.Color("#FFFDF5")).
+			Background(lipgloss.Color("#FF5F87")).
+			Padding(0, 1).
+			MarginRight(1)
 
-	timeSegmentStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color("#5F875F")).
-				Foreground(lipgloss.Color("#FFFFFF")).
-				Padding(0, 1)
+	timeStyle = statusNugget.
+			Background(lipgloss.Color("#A550DF")).
+			Align(lipgloss.Right)
+
+	statusText = lipgloss.NewStyle().Inherit(statusBarStyle)
 
 	contentClean = lipgloss.NewStyle().
 			Padding(1, 2)
@@ -91,85 +91,82 @@ func (m Model) View() string {
 }
 
 func (m Model) renderIRCStatusBar() string {
-	// Mode segment
-	var modeText string
+	// Status key (mode)
+	var statusKey string
 	switch m.currentMode {
 	case todoMode:
-		modeText = "TODO"
+		if m.editingTodoIdx >= 0 {
+			statusKey = "EDITING"
+		} else {
+			statusKey = "TODO"
+		}
 	case stakMode:
-		modeText = "STAK"
+		statusKey = "STAK"
 	case calendarMode:
-		modeText = "CALENDAR"
+		statusKey = "CALENDAR"
 	default:
-		modeText = "STAK"
+		statusKey = "STAK"
 	}
-	modeSegment := modeSegmentStyle.Render(modeText)
 
-	// Context segment (or error message)
+	// Context information
 	var contextText string
-	var contextSegment string
-
-	// Check if we have an error to show (and it's less than 5 seconds old)
-	if m.errorMessage != "" && time.Since(m.errorTime) < 5*time.Second {
-		// Show error in red
-		errorStyle := lipgloss.NewStyle().
-			Background(lipgloss.Color("#FF0000")).
-			Foreground(lipgloss.Color("#FFFFFF")).
-			Padding(0, 1)
-		contextSegment = errorStyle.Render(m.errorMessage)
-	} else {
-		// Clear old error
-		if m.errorMessage != "" && time.Since(m.errorTime) >= 5*time.Second {
-			// Note: In a real implementation, we'd clear this in the model,
-			// but for now just don't show it
-		}
-
-		// Show normal context
-		switch m.currentMode {
-		case todoMode:
-			if m.editingTodoIdx >= 0 {
-				contextText = "EDITING TODO"
-			} else {
-				completed := 0
-				for _, entry := range m.entries {
-					if entry.Type == models.TypeTodo && entry.TodoStatus == models.TodoCompleted {
-						completed++
-					}
+	switch m.currentMode {
+	case todoMode:
+		if m.editingTodoIdx < 0 {
+			completed := 0
+			for _, entry := range m.entries {
+				if entry.Type == models.TypeTodo && entry.TodoStatus == models.TodoCompleted {
+					completed++
 				}
-				contextText = fmt.Sprintf("%d/%d done", completed, len(m.entries))
 			}
-		case calendarMode:
-			var paneText string
-			switch m.activePane {
-			case inputPane:
-				paneText = "INPUT"
-			case entriesPane:
-				paneText = "NOTES"
-			case datePickerPane:
-				paneText = "CALENDAR"
-			}
-			contextText = fmt.Sprintf("%s • %s • %d entries", m.selectedDate.Format("January 2006"), paneText, len(m.entries))
-		default:
-			contextText = fmt.Sprintf("%d entries", len(m.entries))
+			contextText = fmt.Sprintf("%d/%d completed", completed, len(m.entries))
+		} else {
+			contextText = "Editing todo item"
 		}
-		contextSegment = contextSegmentStyle.Render(contextText)
+	case stakMode:
+		today := time.Now().Format("2006-01-02")
+		contextText = fmt.Sprintf("%s.md • %d entries", today, len(m.entries))
+	case calendarMode:
+		var paneText string
+		switch m.activePane {
+		case inputPane:
+			paneText = "INPUT"
+		case entriesPane:
+			paneText = "NOTES"
+		case datePickerPane:
+			paneText = "CALENDAR"
+		}
+		contextText = fmt.Sprintf("%s • %s", m.selectedDate.Format("January 2006"), paneText)
+	default:
+		contextText = fmt.Sprintf("%d entries", len(m.entries))
 	}
 
-	// Time segment
-	now := time.Now()
-	timeText := now.Format("15:04 Mon Jan 2")
-	timeSegment := timeSegmentStyle.Render(timeText)
-
-	// Spacer to push time to the right
-	segments := modeSegment + " " + contextSegment
-	usedWidth := lipgloss.Width(segments) + lipgloss.Width(timeSegment)
-	spacerWidth := m.width - usedWidth - 2 // -2 for padding
-	if spacerWidth < 0 {
-		spacerWidth = 0
+	// Time or error
+	var timeText string
+	if m.errorMessage != "" && time.Since(m.errorTime) < 5*time.Second {
+		timeText = m.errorMessage
+	} else {
+		now := time.Now()
+		timeText = now.Format("15:04")
 	}
-	spacer := statusBarStyle.Width(spacerWidth).Render("")
 
-	return statusBarStyle.Width(m.width).Render(segments + spacer + timeSegment)
+	// Render components following Lip Gloss example pattern
+	w := lipgloss.Width
+
+	statusKeyRendered := statusStyle.Render(statusKey)
+	timeRendered := timeStyle.Render(timeText)
+	contextRendered := statusText.
+		Width(m.width - w(statusKeyRendered) - w(timeRendered)).
+		Render(contextText)
+
+	// Join horizontally like in the example
+	bar := lipgloss.JoinHorizontal(lipgloss.Top,
+		statusKeyRendered,
+		contextRendered,
+		timeRendered,
+	)
+
+	return statusBarStyle.Width(m.width).Render(bar)
 }
 
 func (m Model) renderEntriesClean(height int) string {
@@ -356,6 +353,11 @@ func (m Model) addConsistentBorder(content string, width, height int, isFocused 
 	// Ensure content fills the full height by padding it to the required height
 	contentLines := strings.Split(content, "\n")
 	requiredLines := height - 4 // Account for border (2) + padding (2)
+
+	// Safety check: ensure requiredLines is at least 1
+	if requiredLines < 1 {
+		requiredLines = 1
+	}
 
 	// If content has fewer lines than required, pad with empty lines
 	for len(contentLines) < requiredLines {
