@@ -188,7 +188,7 @@ func NewModelWithConfig(cfg *config.Config) *Model {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		textinput.Blink,
-		m.loadTodayEntries(),
+		m.loadFilteredEntries(),
 	)
 }
 
