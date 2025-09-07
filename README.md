@@ -4,6 +4,15 @@ intelligent terminal scratchpad for quick thoughts, todos, links
 
 ## install
 
+### From source
+```bash
+git clone https://github.com/cyra/stak.git
+cd stak
+go build -o stak ./cmd/stak
+./stak
+```
+
+### From go install
 ```bash
 go install github.com/cyra/stak/cmd/stak@latest
 ```
