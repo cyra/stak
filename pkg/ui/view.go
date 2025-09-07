@@ -269,7 +269,7 @@ func (m Model) renderInputClean() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(borderColor)).
 		Padding(0, 1).
-		Width(m.width - 4). // Account for border and padding
+		Width(m.width - 2). // Account for border and padding
 		Render(inputView)
 }
 
@@ -295,8 +295,8 @@ func (m Model) renderCalendarView(height int) string {
 
 	// Fixed width for calendar pane - make it a bit wider for better appearance
 	// Account for two separate borders: each takes 4 characters (2 border + 2 padding)
-	availableWidth := m.width - 8 // 4 for left border + 4 for right border
-	calendarFixedWidth := 40      // Fixed width for calendar pane
+	availableWidth := m.width // 4 for left border + 4 for right border
+	calendarFixedWidth := 40  // Fixed width for calendar pane
 	leftWidth := availableWidth - calendarFixedWidth
 
 	// Ensure minimum width for notes pane
@@ -371,15 +371,15 @@ func (m Model) addConsistentBorder(content string, width, height int, isFocused 
 
 	paddedContent := strings.Join(contentLines, "\n")
 
-	// Apply border with proper dimensions - account for border and padding
-	// RoundedBorder adds 2 characters for border, Padding(1,1) adds 2 more
-	// So total is 4 characters, so we need width-4 and height-4
+	// Apply border with proper dimensions
+	// The width parameter should be the content width (terminal width - border space)
+	// RoundedBorder adds 2 characters, Padding(1,1) adds 2 more = 4 total
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(borderColor)).
-		Width(width-4).   // Account for border (2) + padding (2)
-		Height(height-4). // Account for border (2) + padding (2)
-		Padding(1, 1).
+		Width(width-2).   // Content width (terminal width - border/padding)
+		Height(height-4). // Content height (terminal height - border/padding)
+		Padding(1, 1).    // Padding inside the border
 		Render(paddedContent)
 }
 
