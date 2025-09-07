@@ -2,9 +2,13 @@ package categorizer
 
 import (
 	"regexp"
-	"strings"
 	"stak/internal/models"
+	"stak/internal/ports"
+	"strings"
 )
+
+// Compile-time check to ensure Categoriser implements CategorizerPort
+var _ ports.CategorizerPort = (*Categoriser)(nil)
 
 type Categoriser struct {
 	linkRegex     *regexp.Regexp
@@ -12,6 +16,7 @@ type Categoriser struct {
 	codeRegex     *regexp.Regexp
 	questionRegex *regexp.Regexp
 	meetingRegex  *regexp.Regexp
+	tomorrowRegex *regexp.Regexp
 }
 
 func New() *Categoriser {
@@ -21,6 +26,7 @@ func New() *Categoriser {
 		codeRegex:     regexp.MustCompile("```|`[^`]+`|\\$\\s+[a-zA-Z]|import\\s+|function\\s+|class\\s+|def\\s+|const\\s+|let\\s+|var\\s+"),
 		questionRegex: regexp.MustCompile(`\?(\s|$)`),
 		meetingRegex:  regexp.MustCompile(`(?i)(meeting|standup|sync|1:1|one-on-one|zoom|conference|call.*(meeting|scheduled|today|tomorrow))`),
+		tomorrowRegex: regexp.MustCompile(`(?i)\btomorrow\b`),
 	}
 }
 
@@ -67,12 +73,12 @@ func (c *Categoriser) isTodo(content string) bool {
 	if c.todoRegex.MatchString(content) {
 		return true
 	}
-	
+
 	lowerContent := strings.ToLower(content)
-	
+
 	// Check for action verbs that indicate todos
 	actionVerbs := []string{
-		"fix", "update", "implement", "create", "build", "add", "remove", 
+		"fix", "update", "implement", "create", "build", "add", "remove",
 		"refactor", "test", "deploy", "setup", "install", "configure",
 		"write", "read", "check", "review", "merge", "commit", "push",
 		"debug", "investigate", "research", "learn", "practice",
@@ -81,37 +87,37 @@ func (c *Categoriser) isTodo(content string) bool {
 		"prepare", "plan", "organize", "clean", "backup", "sync",
 		"send", "reply", "respond", "follow", "track", "monitor",
 	}
-	
+
 	// Check if it starts with an action verb
 	for _, verb := range actionVerbs {
-		if strings.HasPrefix(lowerContent, verb+" ") || 
-		   strings.HasPrefix(lowerContent, verb+":") ||
-		   lowerContent == verb {
+		if strings.HasPrefix(lowerContent, verb+" ") ||
+			strings.HasPrefix(lowerContent, verb+":") ||
+			lowerContent == verb {
 			return true
 		}
 	}
-	
+
 	// Check for todo indicators
 	todoIndicators := []string{
-		"need to", "should", "must", "have to", "remember to", 
+		"need to", "should", "must", "have to", "remember to",
 		"don't forget", "todo:", "task:", "action:", "next:",
 		"tomorrow", "later", "work on", "get done",
 		"todo", "task", "action", "handle",
 		"later today", "this week", "before", "after",
 	}
-	
+
 	for _, indicator := range todoIndicators {
 		if strings.Contains(lowerContent, indicator) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
 func (c *Categoriser) extractCodeTags(entry *models.Entry, content string) {
 	tags := []string{"code"}
-	
+
 	languages := map[string]string{
 		"go":         "golang",
 		"golang":     "golang",
@@ -133,22 +139,22 @@ func (c *Categoriser) extractCodeTags(entry *models.Entry, content string) {
 			tags = append(tags, tag)
 		}
 	}
-	
+
 	c.extractTags(entry, tags)
 }
 
 func (c *Categoriser) extractGeneralTags(entry *models.Entry, content string) {
 	keywords := map[string]string{
-		"idea":    "idea",
+		"idea":       "idea",
 		"brainstorm": "brainstorm",
-		"thought": "reflection",
-		"note":    "note",
-		"reminder": "reminder",
-		"important": "important",
-		"urgent":   "urgent",
-		"bug":      "bug",
-		"feature":  "feature",
-		"fix":      "fix",
+		"thought":    "reflection",
+		"note":       "note",
+		"reminder":   "reminder",
+		"important":  "important",
+		"urgent":     "urgent",
+		"bug":        "bug",
+		"feature":    "feature",
+		"fix":        "fix",
 	}
 
 	var tags []string
@@ -157,14 +163,14 @@ func (c *Categoriser) extractGeneralTags(entry *models.Entry, content string) {
 			tags = append(tags, tag)
 		}
 	}
-	
+
 	// Also check for programming languages in all content
 	c.extractLanguageTags(entry, content)
-	
+
 	if len(tags) == 0 {
 		tags = []string{"note"}
 	}
-	
+
 	c.extractTags(entry, tags)
 }
 

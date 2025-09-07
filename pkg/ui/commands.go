@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"time"
 	tea "github.com/charmbracelet/bubbletea"
 	"stak/internal/models"
 )
@@ -14,11 +15,16 @@ type filteredEntriesLoadedMsg struct {
 	mode    mode
 }
 
+type calendarEntriesLoadedMsg struct {
+	calendarEntries map[string][]models.Entry
+	selectedDate    time.Time
+}
+
 type entryAddedMsg struct{}
 
 func (m Model) loadTodayEntries() tea.Cmd {
 	return func() tea.Msg {
-		entries, err := m.storage.LoadTodayEntries()
+		entries, err := m.entryService.LoadTodayEntries()
 		if err != nil {
 			return entriesLoadedMsg{entries: []models.Entry{}}
 		}
@@ -28,18 +34,9 @@ func (m Model) loadTodayEntries() tea.Cmd {
 
 func (m Model) searchEntries(query string, linksOnly bool) tea.Cmd {
 	return func() tea.Msg {
-		allEntries, err := m.storage.LoadAllEntries()
+		entries, err := m.entryService.SearchEntries(query, linksOnly)
 		if err != nil {
 			return entriesLoadedMsg{entries: []models.Entry{}}
-		}
-
-		m.searcher.SetEntries(allEntries)
-		
-		var entries []models.Entry
-		if linksOnly {
-			entries = m.searcher.SearchLinks(query)
-		} else {
-			entries = m.searcher.RankedSearch(query)
 		}
 
 		return entriesLoadedMsg{entries: entries}
@@ -49,27 +46,52 @@ func (m Model) searchEntries(query string, linksOnly bool) tea.Cmd {
 func (m Model) loadFilteredEntries() tea.Cmd {
 	currentMode := m.currentMode // Capture current mode
 	return func() tea.Msg {
-		entries, err := m.storage.LoadTodayEntries()
+		var entries []models.Entry
+		var err error
+		
+		switch currentMode {
+		case todoMode:
+			entries, err = m.entryService.LoadFilteredEntries(models.TypeTodo)
+		case stakMode:
+			entries, err = m.entryService.LoadTodayEntries()
+		default:
+			entries, err = m.entryService.LoadTodayEntries()
+		}
+		
 		if err != nil {
 			return filteredEntriesLoadedMsg{entries: []models.Entry{}, mode: currentMode}
 		}
 
-		// Filter entries based on current mode
-		var filteredEntries []models.Entry
-		for _, entry := range entries {
-			switch currentMode {
-			case todoMode:
-				if entry.Type == models.TypeTodo {
-					filteredEntries = append(filteredEntries, entry)
-				}
-			case scratchpadMode:
-				// Show everything in scratchpad mode
-				filteredEntries = append(filteredEntries, entry)
-			default:
-				filteredEntries = append(filteredEntries, entry)
+		return filteredEntriesLoadedMsg{entries: entries, mode: currentMode}
+	}
+}
+
+func (m Model) loadCalendarEntries() tea.Cmd {
+	selectedDate := m.selectedDate
+	return func() tea.Msg {
+		// Load entries for the current month
+		startOfMonth := time.Date(selectedDate.Year(), selectedDate.Month(), 1, 0, 0, 0, 0, selectedDate.Location())
+		_ = startOfMonth // TODO: Use for date range queries when implemented
+		
+		// For now, load all entries (we'll need to extend the service to support date ranges)
+		entries, err := m.entryService.LoadTodayEntries() // TODO: Extend to load date ranges
+		if err != nil {
+			return calendarEntriesLoadedMsg{
+				calendarEntries: make(map[string][]models.Entry),
+				selectedDate:    selectedDate,
 			}
 		}
-
-		return filteredEntriesLoadedMsg{entries: filteredEntries, mode: currentMode}
+		
+		// Group entries by date
+		calendarEntries := make(map[string][]models.Entry)
+		for _, entry := range entries {
+			dateKey := entry.CreatedAt.Format("2006-01-02")
+			calendarEntries[dateKey] = append(calendarEntries[dateKey], entry)
+		}
+		
+		return calendarEntriesLoadedMsg{
+			calendarEntries: calendarEntries,
+			selectedDate:    selectedDate,
+		}
 	}
 }

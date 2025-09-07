@@ -3,7 +3,13 @@
     "allow": [
       "Bash(git commit:*)",
       "Bash(go build:*)",
-      "Bash(go mod:*)"
+      "Bash(go mod:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(sed:*)",
+      "Bash(fd:*)",
+      "Bash(go test:*)",
+      "Bash(go vet:*)"
     ],
     "deny": [],
     "ask": []

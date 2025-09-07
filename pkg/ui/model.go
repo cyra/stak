@@ -1,47 +1,128 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"stak/internal/application"
 	"stak/internal/config"
 	"stak/internal/models"
 	"stak/pkg/categorizer"
 	"stak/pkg/extractor"
 	"stak/pkg/search"
 	"stak/pkg/storage"
+
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	datepicker "github.com/ethanefung/bubble-datepicker"
 )
 
 type mode int
 
 const (
-	scratchpadMode mode = iota
+	stakMode mode = iota // Renamed from scratchpadMode
 	todoMode
-	todoListMode
-	searchMode
-	todayMode
+	calendarMode
 )
 
+type calendarPane int
+
+const (
+	inputPane calendarPane = iota
+	entriesPane
+	datePickerPane
+)
+
+// Key bindings for help
+type keyMap struct {
+	Up       key.Binding
+	Down     key.Binding
+	Tab      key.Binding
+	ShiftTab key.Binding
+	Enter    key.Binding
+	Edit     key.Binding
+	Quit     key.Binding
+	Help     key.Binding
+}
+
+func (k keyMap) ShortHelp() []key.Binding {
+	return []key.Binding{k.Help, k.Quit}
+}
+
+func (k keyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.Up, k.Down, k.Tab, k.ShiftTab},
+		{k.Enter, k.Edit, k.Help, k.Quit},
+	}
+}
+
+var keys = keyMap{
+	Up: key.NewBinding(
+		key.WithKeys("up"),
+		key.WithHelp("↑", "up"),
+	),
+	Down: key.NewBinding(
+		key.WithKeys("down"),
+		key.WithHelp("↓", "down"),
+	),
+	Tab: key.NewBinding(
+		key.WithKeys("tab"),
+		key.WithHelp("tab", "next pane"),
+	),
+	ShiftTab: key.NewBinding(
+		key.WithKeys("shift+tab"),
+		key.WithHelp("shift+tab", "toggle mode"),
+	),
+	Enter: key.NewBinding(
+		key.WithKeys("enter"),
+		key.WithHelp("enter", "select/toggle"),
+	),
+	Edit: key.NewBinding(
+		key.WithKeys("e"),
+		key.WithHelp("e", "edit todo"),
+	),
+	Help: key.NewBinding(
+		key.WithKeys("?"),
+		key.WithHelp("?", "help"),
+	),
+	Quit: key.NewBinding(
+		key.WithKeys("ctrl+c", "q"),
+		key.WithHelp("ctrl+c/q", "quit"),
+	),
+}
+
 type Model struct {
-	config       *config.Config
-	storage      *storage.Storage
-	categoriser  *categorizer.Categoriser
-	searcher     *search.FuzzySearcher
-	extractor    *extractor.LinkExtractor
-	textInput    textinput.Model
-	todoList     *TodoListModel
-	entries      []models.Entry
-	currentMode  mode
-	width        int
-	height       int
-	ready        bool
+	config        *config.Config
+	storage       *storage.Storage // Keep for direct access needs
+	entryService  *application.EntryService
+	textInput     textinput.Model
+	todoList      *TodoListModel
+	entries       []models.Entry
+	currentMode   mode
+	width         int
+	height        int
+	ready         bool
 	commands      []string
 	slashCommands []string
-	selectedIdx  int
-	searchQuery  string
-	showHelp     bool
+	selectedIdx   int
+	searchQuery   string
+	showHelp      bool
+	// Calendar mode fields
+	selectedDate    time.Time
+	calendarEntries map[string][]models.Entry // date -> entries
+	datePicker      datepicker.Model
+	activePane      calendarPane // for tab navigation in calendar mode
+	help            help.Model
+	keys            keyMap
+	// TODO editing state
+	editingTodoIdx  int    // -1 when not editing
+	originalContent string // backup for cancel
+	// Error handling
+	errorMessage    string // Error message to show in status bar
+	errorTime       time.Time // When error was shown
 }
 
 func NewModel() *Model {
@@ -50,10 +131,14 @@ func NewModel() *Model {
 }
 
 func NewModelWithConfig(cfg *config.Config) *Model {
+	// Create dependencies
 	storage := storage.New(cfg)
 	categoriser := categorizer.New()
 	searcher := search.NewFuzzySearcher()
 	extractor := extractor.NewLinkExtractor()
+
+	// Create application service
+	entryService := application.NewEntryService(storage, categoriser, extractor, searcher)
 
 	ti := textinput.New()
 	ti.Placeholder = "Enter your thoughts, links, todos..."
@@ -62,36 +147,46 @@ func NewModelWithConfig(cfg *config.Config) *Model {
 	ti.Width = 50
 	ti.ShowSuggestions = true
 
-	return &Model{
-		config:      cfg,
-		storage:     storage,
-		categoriser: categoriser,
-		searcher:    searcher,
-		extractor:   extractor,
-		textInput:   ti,
-		entries:     []models.Entry{},
-		currentMode: scratchpadMode,
+	// Initialize datepicker
+	dp := datepicker.New(time.Now())
+
+	// Initialize help
+	h := help.New()
+	h.ShowAll = false // Start with short help
+
+	model := &Model{
+		config:       cfg,
+		storage:      storage,
+		entryService: entryService,
+		textInput:    ti,
+		entries:      []models.Entry{},
+		currentMode:  stakMode,
 		commands: []string{
-			"Shift+Tab - Toggle between scratchpad and todo mode",
-			"/todos - Interactive todo list with checkboxes",
-			"/today - Show today's entries",
-			"/search <query> - Search all entries", 
-			"/s <query> - Search all entries",
-			"/sl <query> - Search links only",
+			"Shift+Tab - Toggle between STAK and TODO mode",
+			"/todos - Switch to TODO mode",
+			"/cal - Calendar view with date picker",
 			"/help - Show this help",
 			"/quit - Exit stak",
 		},
 		slashCommands: []string{
 			"/todos",
-			"/today",
-			"/search ",
-			"/s ",
-			"/sl ",
+			"/cal",
 			"/help",
 			"/quit",
 		},
 		selectedIdx: -1,
+		// Initialize calendar fields
+		selectedDate:    time.Now(),
+		calendarEntries: make(map[string][]models.Entry),
+		datePicker:      dp,
+		activePane:      inputPane,
+		help:            h,
+		keys:            keys,
+		editingTodoIdx:  -1, // Not editing by default
 	}
+
+	model.updatePrompt() // Set initial prompt
+	return model
 }
 
 func (m Model) Init() tea.Cmd {
@@ -114,15 +209,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			inputWidth = 20
 		}
 		m.textInput.Width = inputWidth
-		
+
 		// Update todoList dimensions if it exists
 		if m.todoList != nil {
 			m.todoList.SetSize(msg.Width, msg.Height-3) // Account for header and footer
 		}
-		
+
 		m.ready = true
 
 	case tea.KeyMsg:
+		// Check for help key first
+		if key.Matches(msg, m.keys.Help) {
+			m.help.ShowAll = !m.help.ShowAll
+			return m, nil
+		}
+		
 		switch msg.Type {
 		case tea.KeyCtrlC:
 			return m, tea.Quit
@@ -132,25 +233,55 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.showHelp = false
 				return m, nil
 			}
-			if m.currentMode == searchMode || m.currentMode == todayMode || m.currentMode == todoListMode {
-				m.currentMode = scratchpadMode
+			if m.currentMode == calendarMode {
+				m.currentMode = stakMode
 				return m, m.loadTodayEntries()
 			}
 
 		case tea.KeyShiftTab:
-			if m.currentMode == scratchpadMode {
+			// Cycle through all 3 modes: STAK → TODO → CALENDAR → STAK
+			switch m.currentMode {
+			case stakMode:
 				m.currentMode = todoMode
-			} else if m.currentMode == todoMode {
-				m.currentMode = scratchpadMode
+			case todoMode:
+				m.currentMode = calendarMode
+				m.activePane = inputPane // Reset pane navigation
+				m.textInput.Focus() // Make sure input is focused
+				m.datePicker.SetTime(m.selectedDate) // Initialize datepicker
+			case calendarMode:
+				m.currentMode = stakMode
+				m.activePane = inputPane // Reset pane navigation
+				m.textInput.Focus() // Make sure input is focused
 			}
 			m.selectedIdx = -1
-			return m, m.loadFilteredEntries()
+			m.showHelp = false // Close help dialog when switching modes
+			m.updatePrompt()   // Update the prompt when mode changes
+			
+			// Load appropriate entries for the new mode
+			if m.currentMode == calendarMode {
+				return m, m.loadCalendarEntries()
+			} else {
+				return m, m.loadFilteredEntries()
+			}
 
 		case tea.KeyEnter:
 			if m.showHelp {
 				m.showHelp = false
 				return m, nil
 			}
+			
+			// Handle enter in TODO mode
+			if m.currentMode == todoMode {
+				// If editing a todo, save the changes
+				if m.editingTodoIdx >= 0 && m.editingTodoIdx < len(m.entries) {
+					return m.saveEditingTodo()
+				}
+				// If a todo is selected (not in input), toggle it
+				if !m.textInput.Focused() && m.selectedIdx >= 0 && m.selectedIdx < len(m.entries) {
+					return m.toggleTodo()
+				}
+			}
+			
 			return m.handleEnter()
 
 		case tea.KeyUp:
@@ -164,8 +295,52 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyTab:
-			if (m.currentMode == todoMode || m.currentMode == todayMode) && m.selectedIdx >= 0 && m.selectedIdx < len(m.entries) {
-				return m.toggleTodo()
+			if m.currentMode == calendarMode {
+				// Cycle through panes in calendar mode: Input → Entries → DatePicker → Input
+				switch m.activePane {
+				case inputPane:
+					m.activePane = entriesPane
+					m.textInput.Blur()
+				case entriesPane:
+					m.activePane = datePickerPane
+				case datePickerPane:
+					m.activePane = inputPane
+					m.textInput.Focus()
+				}
+				return m, nil
+			} else if m.currentMode == todoMode {
+				// In TODO mode, tab switches between input and todo list navigation
+				if m.textInput.Focused() {
+					m.textInput.Blur()
+					// Focus on todo list - set selectedIdx if not already set
+					if len(m.entries) > 0 && m.selectedIdx < 0 {
+						m.selectedIdx = 0
+					}
+				} else {
+					m.textInput.Focus()
+					m.selectedIdx = -1 // Clear todo selection
+				}
+				return m, nil
+			}
+			// STAK mode: Tab does nothing (could add basic completion later)
+
+		default:
+			// Handle special keys in TODO mode
+			if m.currentMode == todoMode && !m.textInput.Focused() && m.selectedIdx >= 0 && m.selectedIdx < len(m.entries) {
+				switch msg.String() {
+				case "e":
+					// Enter edit mode
+					return m.startEditingTodo()
+				case "right":
+					// TODO: Show context menu (edit/delete)
+					// For now, just start editing
+					return m.startEditingTodo()
+				}
+			}
+			
+			// Handle escape in edit mode
+			if m.currentMode == todoMode && m.editingTodoIdx >= 0 && msg.String() == "esc" {
+				return m.cancelEditingTodo()
 			}
 		}
 
@@ -187,33 +362,54 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case entryAddedMsg:
 		cmds = append(cmds, m.loadFilteredEntries())
 
+	case calendarEntriesLoadedMsg:
+		m.calendarEntries = msg.calendarEntries
+		m.selectedDate = msg.selectedDate
+		// Set entries for the selected date
+		dateKey := m.selectedDate.Format("2006-01-02")
+		if dayEntries, exists := m.calendarEntries[dateKey]; exists {
+			m.entries = dayEntries
+		} else {
+			m.entries = []models.Entry{}
+		}
+
 	case todoToggledMsg:
 		// Save the toggled todo entry
 		if err := m.storage.SaveEntry(msg.entry); err == nil {
-			// Refresh the current view if we're not in todo list mode
-			if m.currentMode != todoListMode {
-				cmds = append(cmds, m.loadFilteredEntries())
+			// Refresh the current view
+			cmds = append(cmds, m.loadFilteredEntries())
+		}
+	}
+
+	// Remove old todoListMode handling - now integrated into todoMode
+
+	// Handle datepicker updates if in calendar mode and datepicker pane is active
+	if m.currentMode == calendarMode && m.activePane == datePickerPane {
+		var dpCmd tea.Cmd
+		m.datePicker, dpCmd = m.datePicker.Update(msg)
+		if dpCmd != nil {
+			cmds = append(cmds, dpCmd)
+		}
+		
+		// Update selected date when datepicker value changes
+		if newDate := m.datePicker.Time; !newDate.Equal(m.selectedDate) {
+			m.selectedDate = newDate
+			// Load entries for the new date
+			dateKey := m.selectedDate.Format("2006-01-02")
+			if dayEntries, exists := m.calendarEntries[dateKey]; exists {
+				m.entries = dayEntries
+			} else {
+				m.entries = []models.Entry{}
 			}
 		}
-
-	case exitTodoListMsg:
-		m.currentMode = scratchpadMode
-		return m, m.loadTodayEntries()
 	}
 
-	// Handle todo list updates if in todo list mode
-	if m.currentMode == todoListMode && m.todoList != nil {
-		var todoCmd tea.Cmd
-		todoModel, todoCmd := m.todoList.Update(msg)
-		if todoList, ok := todoModel.(*TodoListModel); ok {
-			m.todoList = todoList
-		}
-		cmds = append(cmds, todoCmd)
+	// Handle text input updates (only if input pane is active in calendar mode)
+	if m.currentMode != calendarMode || m.activePane == inputPane {
+		var cmd tea.Cmd
+		m.textInput, cmd = m.textInput.Update(msg)
+		cmds = append(cmds, cmd)
 	}
-
-	var cmd tea.Cmd
-	m.textInput, cmd = m.textInput.Update(msg)
-	cmds = append(cmds, cmd)
 
 	// Handle autocomplete for slash commands
 	m.updateSuggestions()
@@ -245,7 +441,6 @@ func (m Model) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 	}
 
 	command := parts[0]
-	args := parts[1:]
 
 	switch command {
 	case "/quit", "/q":
@@ -256,36 +451,48 @@ func (m Model) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 		m.textInput.SetValue("")
 		return m, nil
 
-	case "/today", "/t":
-		m.currentMode = todayMode
+	case "/stak":
+		m.currentMode = stakMode
 		m.textInput.SetValue("")
 		return m, m.loadFilteredEntries()
 
-	case "/todos":
-		m.currentMode = todoListMode
+	case "/cal":
+		m.currentMode = calendarMode
+		m.activePane = inputPane
 		m.textInput.SetValue("")
-		// Load today's entries and create todo list
-		entries, _ := m.storage.LoadTodayEntries()
-		m.todoList = NewTodoListModel(entries)
+		m.textInput.Focus()
+		// Initialize datepicker with current selected date
+		m.datePicker.SetTime(m.selectedDate)
+		return m, m.loadCalendarEntries()
+
+	case "/todos":
+		m.currentMode = todoMode
+		m.textInput.SetValue("")
+		return m, m.loadFilteredEntries()
+
+	case "/todo", "/t":
+		// Add todo without switching modes
+		args := parts[1:] // Get the text after the command
+		if len(args) > 0 {
+			todoText := strings.Join(args, " ")
+			// Force as todo type
+			todoType := models.TypeTodo
+			_, err := m.entryService.CreateEntry(todoText, &todoType)
+			if err != nil {
+				// TODO: Show error in status bar
+			}
+			m.textInput.SetValue("")
+			return m, m.loadFilteredEntries()
+		}
+		// If no text provided, show error
+		m.errorMessage = "Usage: /todo <text> or /t <text>"
+		m.errorTime = time.Now()
 		return m, nil
-
-	case "/search", "/s":
-		if len(args) > 0 {
-			query := strings.Join(args, " ")
-			m.currentMode = searchMode
-			m.searchQuery = query
-			m.textInput.SetValue("")
-			return m, m.searchEntries(query, false)
-		}
-
-	case "/sl":
-		if len(args) > 0 {
-			query := strings.Join(args, " ")
-			m.currentMode = searchMode
-			m.searchQuery = query
-			m.textInput.SetValue("")
-			return m, m.searchEntries(query, true)
-		}
+	
+	default:
+		// Unknown command
+		m.errorMessage = fmt.Sprintf("Unknown command: %s", command)
+		m.errorTime = time.Now()
 	}
 
 	m.textInput.SetValue("")
@@ -293,28 +500,15 @@ func (m Model) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) addEntry(content string) (tea.Model, tea.Cmd) {
-	entry := models.NewEntry(content)
-	
-	// If we're in todo mode, force everything to be a todo
+	// Use application service for business logic
+	var forceType *models.EntryType
 	if m.currentMode == todoMode {
-		entry.Type = models.TypeTodo
-		entry.TodoStatus = models.TodoPending
-		entry.Tags = []string{"todo", "task"}
-	} else {
-		// Use normal categorization for other modes
-		m.categoriser.CategoriseEntry(entry)
+		todoType := models.TypeTodo
+		forceType = &todoType
 	}
 
-	if entry.Type == models.TypeLink && entry.URL != "" {
-		go func() {
-			if title, err := m.extractor.GetURLTitle(entry.URL); err == nil {
-				entry.URLTitle = title
-				m.storage.SaveEntry(entry)
-			}
-		}()
-	}
-
-	if err := m.storage.SaveEntry(entry); err != nil {
+	_, err := m.entryService.CreateEntry(content, forceType)
+	if err != nil {
 		return m, nil
 	}
 
@@ -352,9 +546,13 @@ func (m *Model) Storage() *storage.Storage {
 	return m.storage
 }
 
+func (m *Model) updatePrompt() {
+	m.textInput.Prompt = "> "
+}
+
 func (m *Model) updateSuggestions() {
 	input := m.textInput.Value()
-	
+
 	// Only show suggestions when input starts with "/"
 	if strings.HasPrefix(input, "/") {
 		// Filter slash commands based on current input
@@ -372,10 +570,7 @@ func (m *Model) updateSuggestions() {
 }
 
 func (m Model) addTomorrowEntry(content string) (tea.Model, tea.Cmd) {
-	entry := models.NewEntry(content)
-	m.categoriser.CategoriseEntry(entry)
-
-	if err := m.storage.SaveEntryForTomorrow(entry); err != nil {
+	if err := m.entryService.CreateTomorrowEntry(content); err != nil {
 		return m, nil
 	}
 
@@ -385,4 +580,106 @@ func (m Model) addTomorrowEntry(content string) (tea.Model, tea.Cmd) {
 	}
 }
 
+// Load todos from the past week
+func (m Model) loadWeekTodos() ([]models.Entry, error) {
+	now := time.Now()
+	weekAgo := now.AddDate(0, 0, -7)
+	
+	// For now, load today's entries and filter by date
+	// TODO: Extend storage service to support date range queries
+	allEntries, err := m.storage.LoadTodayEntries()
+	if err != nil {
+		return []models.Entry{}, err
+	}
+	
+	var weekEntries []models.Entry
+	for _, entry := range allEntries {
+		if entry.Type == models.TypeTodo && entry.CreatedAt.After(weekAgo) {
+			weekEntries = append(weekEntries, entry)
+		}
+	}
+	
+	return weekEntries, nil
+}
 
+// Load todos from the past month
+func (m Model) loadMonthTodos() ([]models.Entry, error) {
+	now := time.Now()
+	monthAgo := now.AddDate(0, -1, 0)
+	
+	// For now, load today's entries and filter by date
+	// TODO: Extend storage service to support date range queries
+	allEntries, err := m.storage.LoadTodayEntries()
+	if err != nil {
+		return []models.Entry{}, err
+	}
+	
+	var monthEntries []models.Entry
+	for _, entry := range allEntries {
+		if entry.Type == models.TypeTodo && entry.CreatedAt.After(monthAgo) {
+			monthEntries = append(monthEntries, entry)
+		}
+	}
+	
+	return monthEntries, nil
+}
+
+// Start editing a selected todo
+func (m Model) startEditingTodo() (tea.Model, tea.Cmd) {
+	if m.selectedIdx < 0 || m.selectedIdx >= len(m.entries) {
+		return m, nil
+	}
+	
+	entry := &m.entries[m.selectedIdx]
+	if entry.Type != models.TypeTodo {
+		return m, nil
+	}
+	
+	m.editingTodoIdx = m.selectedIdx
+	m.originalContent = entry.Content
+	m.textInput.SetValue(entry.Content)
+	m.textInput.Focus()
+	
+	return m, nil
+}
+
+// Save editing todo
+func (m Model) saveEditingTodo() (tea.Model, tea.Cmd) {
+	if m.editingTodoIdx < 0 || m.editingTodoIdx >= len(m.entries) {
+		return m, nil
+	}
+	
+	newContent := strings.TrimSpace(m.textInput.Value())
+	if newContent == "" {
+		// Don't save empty content, cancel instead
+		return m.cancelEditingTodo()
+	}
+	
+	// Update the entry
+	entry := &m.entries[m.editingTodoIdx]
+	entry.Content = newContent
+	entry.UpdatedAt = time.Now()
+	
+	// Save to storage
+	if err := m.storage.SaveEntry(entry); err != nil {
+		// TODO: Show error message
+		return m.cancelEditingTodo()
+	}
+	
+	// Exit edit mode
+	m.editingTodoIdx = -1
+	m.originalContent = ""
+	m.textInput.SetValue("")
+	m.textInput.Blur()
+	
+	return m, m.loadFilteredEntries()
+}
+
+// Cancel editing todo
+func (m Model) cancelEditingTodo() (tea.Model, tea.Cmd) {
+	m.editingTodoIdx = -1
+	m.originalContent = ""
+	m.textInput.SetValue("")
+	m.textInput.Blur()
+	return m, nil
+}

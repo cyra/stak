@@ -10,11 +10,15 @@ import (
 	"gopkg.in/yaml.v3"
 	"stak/internal/config"
 	"stak/internal/models"
+	"stak/internal/ports"
 )
 
 type Storage struct {
 	config *config.Config
 }
+
+// Compile-time check to ensure Storage implements StoragePort
+var _ ports.StoragePort = (*Storage)(nil)
 
 func New(cfg *config.Config) *Storage {
 	return &Storage{
@@ -27,8 +31,9 @@ func (s *Storage) Initialize() error {
 }
 
 func (s *Storage) SaveEntry(entry *models.Entry) error {
-	date := entry.CreatedAt.Format(s.config.DateFormat)
-	dayFile, err := s.loadDayFile(date)
+
+date := entry.CreatedAt.Format(s.config.DateFormat)
+dayFile, err := s.loadDayFile(date)
 	if err != nil {
 		dayFile = &models.DayFile{
 			Date:    entry.CreatedAt,
@@ -53,12 +58,29 @@ func (s *Storage) SaveEntry(entry *models.Entry) error {
 }
 
 func (s *Storage) LoadTodayEntries() ([]models.Entry, error) {
-	today := time.Now().Format(s.config.DateFormat)
-	dayFile, err := s.loadDayFile(today)
+
+today := time.Now().Format(s.config.DateFormat)
+dayFile, err := s.loadDayFile(today)
 	if err != nil {
 		return []models.Entry{}, nil
 	}
 	return dayFile.Entries, nil
+}
+
+func (s *Storage) LoadFilteredEntries(entryType models.EntryType) ([]models.Entry, error) {
+	allEntries, err := s.LoadAllEntries()
+	if err != nil {
+		return nil, err
+	}
+	
+	var filtered []models.Entry
+	for _, entry := range allEntries {
+		if entry.Type == entryType {
+			filtered = append(filtered, entry)
+		}
+	}
+	
+	return filtered, nil
 }
 
 func (s *Storage) LoadAllEntries() ([]models.Entry, error) {
@@ -80,7 +102,7 @@ func (s *Storage) LoadAllEntries() ([]models.Entry, error) {
 	return allEntries, nil
 }
 
-func (s *Storage) SearchEntries(query string) ([]models.Entry, error) {
+func (s *Storage) SearchEntries(query string, linksOnly bool) ([]models.Entry, error) {
 	allEntries, err := s.LoadAllEntries()
 	if err != nil {
 		return nil, err
@@ -90,6 +112,11 @@ func (s *Storage) SearchEntries(query string) ([]models.Entry, error) {
 	queryLower := strings.ToLower(query)
 
 	for _, entry := range allEntries {
+		// If linksOnly is true, only search link entries
+		if linksOnly && entry.Type != models.TypeLink {
+			continue
+		}
+		
 		if s.matchesQuery(entry, queryLower) {
 			results = append(results, entry)
 		}
@@ -160,7 +187,7 @@ func (s *Storage) saveDayFile(date string, dayFile *models.DayFile) error {
 func (s *Storage) formatEntryAsMarkdown(entry models.Entry) string {
 	var md strings.Builder
 	
-	md.WriteString(fmt.Sprintf("## %s\n\n", entry.CreatedAt.Format("15:04")))
+	md.WriteString(fmt.Sprintf("## %s\n\n", entry.CreatedAt.Format("15:04:05")))
 	
 	if entry.Type == models.TypeTodo {
 		checkbox := "[ ]"
@@ -192,7 +219,7 @@ func (s *Storage) formatEntryAsMarkdown(entry models.Entry) string {
 func (s *Storage) matchesQuery(entry models.Entry, query string) bool {
 	contentMatch := strings.Contains(strings.ToLower(entry.Content), query)
 	
-	tagMatch := false
+tagMatch := false
 	for _, tag := range entry.Tags {
 		if strings.Contains(strings.ToLower(tag), query) {
 			tagMatch = true
@@ -204,4 +231,31 @@ func (s *Storage) matchesQuery(entry models.Entry, query string) bool {
 	           strings.Contains(strings.ToLower(entry.URLTitle), query)
 	
 	return contentMatch || tagMatch || urlMatch
+}
+
+func (s *Storage) SaveEntryForTomorrow(entry *models.Entry) error {
+	tomorrow := time.Now().Add(24 * time.Hour)
+	date := tomorrow.Format(s.config.DateFormat)
+	dayFile, err := s.loadDayFile(date)
+	if err != nil {
+		dayFile = &models.DayFile{
+			Date:    tomorrow,
+			Entries: []models.Entry{},
+		}
+	}
+
+	found := false
+	for i, existing := range dayFile.Entries {
+		if existing.ID == entry.ID {
+			dayFile.Entries[i] = *entry
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		dayFile.Entries = append(dayFile.Entries, *entry)
+	}
+
+	return s.saveDayFile(date, dayFile)
 }

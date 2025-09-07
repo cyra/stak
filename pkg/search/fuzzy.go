@@ -6,7 +6,11 @@ import (
 
 	"github.com/sahilm/fuzzy"
 	"stak/internal/models"
+	"stak/internal/ports"
 )
+
+// Compile-time check to ensure FuzzySearcher implements SearchPort
+var _ ports.SearchPort = (*FuzzySearcher)(nil)
 
 type FuzzySearcher struct {
 	entries []models.Entry
@@ -22,7 +26,9 @@ func (f *FuzzySearcher) SetEntries(entries []models.Entry) {
 	f.entries = entries
 }
 
-func (f *FuzzySearcher) Search(query string) []models.Entry {
+func (f *FuzzySearcher) Search(query string, entries []models.Entry) []models.Entry {
+	// Set entries for this search
+	f.entries = entries
 	if query == "" {
 		return f.entries
 	}
@@ -50,8 +56,7 @@ func (f *FuzzySearcher) Search(query string) []models.Entry {
 
 func (f *FuzzySearcher) SearchLinks(query string) []models.Entry {
 	linkEntries := f.filterByType(models.TypeLink)
-	f.SetEntries(linkEntries)
-	return f.Search(query)
+	return f.Search(query, linkEntries)
 }
 
 func (f *FuzzySearcher) filterByType(entryType models.EntryType) []models.Entry {

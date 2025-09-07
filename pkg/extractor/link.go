@@ -8,7 +8,11 @@ import (
 	"time"
 
 	"golang.org/x/net/html"
+	"stak/internal/ports"
 )
+
+// Compile-time check to ensure LinkExtractor implements ExtractorPort
+var _ ports.ExtractorPort = (*LinkExtractor)(nil)
 
 type LinkExtractor struct {
 	client *http.Client
